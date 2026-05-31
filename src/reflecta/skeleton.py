@@ -3,6 +3,7 @@ Walking skeleton — task 0.
 Prove that one real Gemini Flash call can raise coverage on a fixture.
 Run: python -m reflecta.skeleton
 """
+
 import ast
 import json
 import os
@@ -33,12 +34,30 @@ def _load_dotenv(repo_root: Path) -> None:
 
 def _run_coverage(sample_dir: Path) -> None:
     subprocess.run(
-        [sys.executable, "-m", "coverage", "run", "-m", "pytest", "tests/", "-q", "--tb=short"],
+        [
+            sys.executable,
+            "-m",
+            "coverage",
+            "run",
+            "-m",
+            "pytest",
+            "tests/",
+            "-q",
+            "--tb=short",
+        ],
         cwd=sample_dir,
         check=True,
     )
     subprocess.run(
-        [sys.executable, "-m", "coverage", "json", "-o", "coverage.json", "--include=calc.py"],
+        [
+            sys.executable,
+            "-m",
+            "coverage",
+            "json",
+            "-o",
+            "coverage.json",
+            "--include=calc.py",
+        ],
         cwd=sample_dir,
         check=True,
     )
