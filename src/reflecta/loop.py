@@ -7,7 +7,6 @@ from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import generate_test
-from reflecta.llm.provider import BudgetExhausted
 from reflecta.models import GeneratedTest, RunReport, TargetStatus
 from reflecta.repair import repair_test
 from reflecta.runner import run_test
