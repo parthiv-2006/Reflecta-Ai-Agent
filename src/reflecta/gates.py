@@ -3,6 +3,10 @@ import ast
 from reflecta.models import GeneratedTest
 
 
+def passes_delta_gate(before: float, after: float) -> bool:
+    return after > before
+
+
 def _is_trivial(node: ast.Assert) -> bool:
     test = node.test
     if isinstance(test, ast.Constant):
