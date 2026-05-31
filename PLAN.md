@@ -14,7 +14,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify: (1) `extract_targets` returns the expected `CoverageTarget` for the fixture's known gap. (2) `ast.parse(gemini_output)` succeeds — i.e., Gemini's raw response is syntactically valid Python before the test is even run. (3) The printed AFTER number is strictly higher than BEFORE on a real run. If `ast.parse` fails or the coverage number does not move, stop and revise the prompt before building anything else.
   - Commit: `"walking skeleton: gemini-written test moves real coverage"`.
 
-- [ ] **0.5. Shared data model.**
+- [x] **0.5. Shared data model.**
   - Does: defines all dataclasses in one canonical file — `CoverageTarget`, `GeneratedTest`, `RepairAttempt`, `RunReport` — so every subsequent task imports from the same place and there are no ad-hoc or duplicate definitions scattered across modules.
   - Files: `src/reflecta/models.py`, `tests/test_models.py` (light: instantiate each dataclass, assert field names and defaults).
   - Verify: `from reflecta.models import CoverageTarget, GeneratedTest, RepairAttempt, RunReport` works from any module. No task after this point defines its own version of these types.
