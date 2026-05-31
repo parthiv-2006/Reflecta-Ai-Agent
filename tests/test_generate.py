@@ -77,10 +77,14 @@ def test_collect_existing_tests_includes_human_excludes_reflecta(tmp_path):
 
     tests_dir = tmp_path / "tests"
     (tests_dir).mkdir()
-    (tests_dir / "test_calc_partial.py").write_text("def test_human():\n    assert True\n")
+    (tests_dir / "test_calc_partial.py").write_text(
+        "def test_human():\n    assert True\n"
+    )
     reflecta_dir = tests_dir / "_reflecta"
     reflecta_dir.mkdir()
-    (reflecta_dir / "test_reflecta_calc_0.py").write_text("# generated, must be excluded\n")
+    (reflecta_dir / "test_reflecta_calc_0.py").write_text(
+        "# generated, must be excluded\n"
+    )
     # unrelated module's tests are not pulled in
     (tests_dir / "test_other.py").write_text("def test_other(): assert True\n")
 
@@ -107,6 +111,21 @@ def test_collect_existing_tests_no_tests_dir(tmp_path):
     from reflecta.generate import collect_existing_tests
 
     assert collect_existing_tests(tmp_path, "calc") == ""
+
+
+def test_generated_test_has_assertion_count(monkeypatch, tmp_path):
+    """HARDENING-0-9 §4.5: assertion_count reflects the real number of asserts."""
+    monkeypatch.setattr(
+        "reflecta.generate.gemini.generate",
+        lambda *a, **kw: (
+            "from calc import add\n\ndef test_a():\n    assert add(1, 1) == 2\n    assert add(2, 2) == 4\n"
+        ),
+    )
+    target = _make_target(tmp_path / "calc.py", [2])
+    result = generate_test(
+        target, "def add(a, b): return a + b", "", repo_path=tmp_path
+    )
+    assert result.assertion_count == 2
 
 
 def test_module_import_path_flat_module(tmp_path):
@@ -147,7 +166,9 @@ def test_method_target_imports_class_not_method(monkeypatch, tmp_path):
         priority=1.0,
         status=TargetStatus.PENDING,
     )
-    generate_test(target, "class Calculator:\n    def add(self): ...", "", repo_path=tmp_path)
+    generate_test(
+        target, "class Calculator:\n    def add(self): ...", "", repo_path=tmp_path
+    )
 
     assert "from calc import Calculator" in captured["prompt"]
     assert "from Calculator import add" not in captured["prompt"]

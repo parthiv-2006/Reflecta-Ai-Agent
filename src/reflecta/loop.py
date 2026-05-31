@@ -43,8 +43,15 @@ def measure_coverage(repo_path: Path) -> float:
     env = child_env()
     subprocess.run(
         [
-            sys.executable, "-m", "coverage", "run",
-            f"--data-file={data_file}", "-m", "pytest", "--tb=no", "-q",
+            sys.executable,
+            "-m",
+            "coverage",
+            "run",
+            f"--data-file={data_file}",
+            "-m",
+            "pytest",
+            "--tb=no",
+            "-q",
         ],
         cwd=repo_path,
         capture_output=True,
@@ -52,8 +59,13 @@ def measure_coverage(repo_path: Path) -> float:
     )
     subprocess.run(
         [
-            sys.executable, "-m", "coverage", "json",
-            f"--data-file={data_file}", "-o", str(json_file),
+            sys.executable,
+            "-m",
+            "coverage",
+            "json",
+            f"--data-file={data_file}",
+            "-o",
+            str(json_file),
         ],
         cwd=repo_path,
         capture_output=True,
@@ -65,7 +77,9 @@ def measure_coverage(repo_path: Path) -> float:
     return data.get("totals", {}).get("percent_covered", 0.0)
 
 
-def process_test(test: GeneratedTest, *, coverage_before: float, coverage_after: float) -> str:
+def process_test(
+    test: GeneratedTest, *, coverage_before: float, coverage_after: float
+) -> str:
     """Apply the coverage-delta gate to a passing test.
 
     Returns "kept" if coverage strictly rose (file left on disk),
@@ -145,7 +159,11 @@ def run_loop(
             target.priority,
         )
 
-        source = target.file_path.read_text(encoding="utf-8") if target.file_path.exists() else ""
+        source = (
+            target.file_path.read_text(encoding="utf-8")
+            if target.file_path.exists()
+            else ""
+        )
         existing_tests = collect_existing_tests(repo_path, target.file_path.stem)
 
         try:
@@ -192,7 +210,9 @@ def run_loop(
                     target.status = TargetStatus.FAILED
                     iter_count += 1
                     stall += 1
-                    logger.info("  failed: repair exhausted after %d attempt(s)", len(attempts))
+                    logger.info(
+                        "  failed: repair exhausted after %d attempt(s)", len(attempts)
+                    )
                     continue
 
                 # repair succeeded — treat repaired test as the passing test
@@ -220,7 +240,9 @@ def run_loop(
         except BudgetExhausted:
             # Provider signalled the free tier is exhausted (429 ceiling). Stop
             # cleanly so the report is still written. HARDENING-0-9 §1.5.
-            logger.warning("provider budget exhausted on target %s", target.qualified_name)
+            logger.warning(
+                "provider budget exhausted on target %s", target.qualified_name
+            )
             target.status = TargetStatus.FAILED
             report.stop_reason = "budget"
             break
@@ -237,6 +259,7 @@ def run_loop(
         report.stop_reason = "exhausted"
 
     report.coverage_after = coverage_before
+    report.budget = f"{budget.used}/{max_llm_calls}"
     logger.info(
         "done: %s | kept=%d discarded=%d repairs=%d | coverage %.2f -> %.2f",
         report.stop_reason,

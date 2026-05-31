@@ -1,3 +1,4 @@
+import ast
 import re
 from pathlib import Path
 
@@ -19,13 +20,19 @@ def module_import_path(file_path: Path, repo_path: Path) -> str:
     repo_path = Path(repo_path).resolve()
     parts = [file_path.stem]
     parent = file_path.parent
-    while (parent / "__init__.py").exists() and parent != parent.parent and parent != repo_path:
+    while (
+        (parent / "__init__.py").exists()
+        and parent != parent.parent
+        and parent != repo_path
+    ):
         parts.append(parent.name)
         parent = parent.parent
     return ".".join(reversed(parts))
 
 
-def collect_existing_tests(repo_path: Path, module_name: str, max_chars: int = 4000) -> str:
+def collect_existing_tests(
+    repo_path: Path, module_name: str, max_chars: int = 4000
+) -> str:
     """Return concatenated human test sources relevant to ``module_name``.
 
     Feeds the generation prompt's "do NOT duplicate" context so Gemini stops
@@ -91,4 +98,14 @@ def generate_test(
         test_file_path=test_file_path,
         source_code=source_code,
         model_used="gemini-2.5-flash",
+        assertion_count=_count_assertions(source_code),
     )
+
+
+def _count_assertions(source_code: str) -> int:
+    """Number of ``assert`` statements in the generated test (0 if unparseable)."""
+    try:
+        tree = ast.parse(source_code)
+    except SyntaxError:
+        return 0
+    return sum(isinstance(n, ast.Assert) for n in ast.walk(tree))

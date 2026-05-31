@@ -50,6 +50,39 @@ def test_run_writes_report_and_prints_summary(tmp_path, monkeypatch):
     assert "78.5" in result.output
 
 
+def test_run_forwards_budget_and_stop_options(tmp_path, monkeypatch):
+    """HARDENING-0-9 §4.6: --max-llm-calls/--target-coverage/--stall-k reach run_loop."""
+    from reflecta.cli import app
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    report = _minimal_report(tmp_path)
+
+    with patch("reflecta.cli.run_loop", return_value=report) as mock_loop:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--path",
+                str(tmp_path),
+                "--max-llm-calls",
+                "7",
+                "--target-coverage",
+                "90",
+                "--stall-k",
+                "4",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    kwargs = mock_loop.call_args.kwargs
+    assert kwargs["max_llm_calls"] == 7
+    assert kwargs["target_coverage"] == 90.0
+    assert kwargs["stall_k"] == 4
+
+
 def test_run_summary_format(tmp_path, monkeypatch):
     """Summary line shows before/after/delta, kept, discarded, repairs, stop reason."""
     from reflecta.cli import app
