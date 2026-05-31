@@ -120,7 +120,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
 
 ## Phase 7 — Ship
 
-- [ ] **16. README** drafted from `SPEC.md`: what it is, two-key free setup, install, one-command demo on the bundled sample, a GIF of coverage climbing.
+- [x] **16. README** drafted from `SPEC.md`: what it is, two-key free setup, install, one-command demo on the bundled sample, a GIF of coverage climbing.
 - [ ] **17. Package:** clean `pyproject.toml`, publish to PyPI or pipx-from-GitHub. Publish command stays behind manual confirmation.
 - [ ] **18. Clean-clone smoke test** with only the two free keys set.
 - [ ] **19. Real-repo demo:** run on 2-3 of your own repos (LeaseGuard is a candidate), capture real before/after numbers for the README.
