@@ -128,6 +128,7 @@ def run_loop(
                 test,
                 result,
                 source,
+                repo_path=repo_path,
                 max_repairs=max_repairs,
                 groq_client=groq_client,
             )
