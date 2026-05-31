@@ -1,3 +1,15 @@
+def build_repair_prompt(source: str, test_source: str, traceback: str) -> str:
+    return (
+        "The following pytest test file fails. Fix it so all tests pass.\n\n"
+        "RULES:\n"
+        "- Output ONLY valid Python code. No markdown. No explanation.\n"
+        "- Do not remove assertions. Fix the logic, imports, or values.\n\n"
+        f"Source:\n{source}\n\n"
+        f"Failing test:\n{test_source}\n\n"
+        f"Traceback:\n{traceback}\n"
+    )
+
+
 def build_generation_prompt(
     source: str,
     qualified_name: str,
