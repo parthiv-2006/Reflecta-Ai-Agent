@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pytest
 
 from reflecta.gates import passes_assertion_gate
 from reflecta.models import CoverageTarget, GeneratedTest, TargetStatus

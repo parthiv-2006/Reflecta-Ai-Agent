@@ -46,6 +46,13 @@ class RepairAttempt:
 
 
 @dataclass
+class RunResult:
+    passed: bool
+    traceback: str
+    duration: float
+
+
+@dataclass
 class RunReport:
     repo_path: Path
     started_at: datetime

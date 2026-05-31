@@ -26,7 +26,15 @@ def test_coverage_target_defaults():
 
 def test_coverage_target_status_values():
     statuses = {s.value for s in TargetStatus}
-    assert statuses == {"pending", "generating", "repairing", "kept", "discarded", "escalated", "failed"}
+    assert statuses == {
+        "pending",
+        "generating",
+        "repairing",
+        "kept",
+        "discarded",
+        "escalated",
+        "failed",
+    }
 
 
 def test_generated_test_defaults():
@@ -70,6 +78,15 @@ def test_run_report_defaults():
     assert rr.targets == []
 
 
+def test_run_result_fields():
+    from reflecta.models import RunResult
+
+    rr = RunResult(passed=True, traceback="", duration=0.5)
+    assert rr.passed is True
+    assert rr.traceback == ""
+    assert rr.duration == 0.5
+
+
 def test_import_all_names():
     # Canonical import path that all future modules must use — never redefine these.
     from reflecta.models import (  # noqa: F401
@@ -78,5 +95,6 @@ def test_import_all_names():
         RepairAttempt,
         RepairResult,
         RunReport,
+        RunResult,
         TargetStatus,
     )
