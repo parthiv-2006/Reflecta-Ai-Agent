@@ -123,8 +123,11 @@ def main() -> None:
 
     print("  ast.parse OK")
 
-    # Step 4 — write generated test
-    out_path = OUT_DIR / "test_coverloop_calc_0.py"
+    # Step 4 — write generated test (scan for next available counter, never overwrite)
+    module_name = target.file_path.stem
+    existing = sorted(OUT_DIR.glob(f"test_coverloop_{module_name}_*.py"))
+    next_n = int(existing[-1].stem.rsplit("_", 1)[-1]) + 1 if existing else 0
+    out_path = OUT_DIR / f"test_coverloop_{module_name}_{next_n}.py"
     out_path.write_text(raw)
     print(f"  wrote {out_path.relative_to(REPO_ROOT)}")
 
