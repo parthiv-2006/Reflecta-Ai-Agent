@@ -1,7 +1,7 @@
 """
 Walking skeleton — task 0.
 Prove that one real Gemini Flash call can raise coverage on a fixture.
-Run: python -m coverloop.skeleton
+Run: python -m reflecta.skeleton
 """
 import ast
 import json
@@ -11,12 +11,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from coverloop.llm.gemini import generate_test_source
+from reflecta.llm.gemini import generate_test_source
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 SAMPLE_DIR = REPO_ROOT / "examples" / "sample_project"
 COVERAGE_JSON = SAMPLE_DIR / "coverage.json"
-OUT_DIR = SAMPLE_DIR / "tests" / "_coverloop"
+OUT_DIR = SAMPLE_DIR / "tests" / "_reflecta"
 
 
 # Minimal stand-in — replaced by models.py in task 0.5
@@ -125,9 +125,9 @@ def main() -> None:
 
     # Step 4 — write generated test (scan for next available counter, never overwrite)
     module_name = target.file_path.stem
-    existing = sorted(OUT_DIR.glob(f"test_coverloop_{module_name}_*.py"))
+    existing = sorted(OUT_DIR.glob(f"test_reflecta_{module_name}_*.py"))
     next_n = int(existing[-1].stem.rsplit("_", 1)[-1]) + 1 if existing else 0
-    out_path = OUT_DIR / f"test_coverloop_{module_name}_{next_n}.py"
+    out_path = OUT_DIR / f"test_reflecta_{module_name}_{next_n}.py"
     out_path.write_text(raw)
     print(f"  wrote {out_path.relative_to(REPO_ROOT)}")
 

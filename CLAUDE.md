@@ -1,14 +1,14 @@
-# CLAUDE.md — coverloop
+# CLAUDE.md — reflecta
 
 ## What this is
-coverloop finds untested Python code, writes targeted pytest tests for it using free LLM tiers, runs them, repairs failures, and keeps only tests that raise coverage. The "self-improving" property comes from real execution (pytest + coverage.py), not from an LLM narrating a plan.
+reflecta finds untested Python code, writes targeted pytest tests for it using free LLM tiers, runs them, repairs failures, and keeps only tests that raise coverage. The "self-improving" property comes from real execution (pytest + coverage.py), not from an LLM narrating a plan.
 
 ## Commands
 - Install deps: `uv sync` (or `pip install -e .`)
 - Run tests: `pytest`
 - Coverage (the machine signal this tool consumes): `coverage run -m pytest && coverage json -o coverage.json`
 - Lint/format: `ruff check . && ruff format .`
-- Run the tool: `python -m coverloop run --path <dir>`
+- Run the tool: `python -m reflecta run --path <dir>`
 - Run a single test: `pytest tests/test_x.py::test_name -q`
 
 ## Stack
@@ -26,42 +26,42 @@ coverloop finds untested Python code, writes targeted pytest tests for it using 
 - Claude is the escalation path only (v2), never the main loop. Keep Claude calls rare so the project stays within free/subscription usage.
 
 ## Data model (see SPEC.md for full)
-CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> GeneratedTest(target, test_file_path, source_code, model_used, assertion_count) -> RepairAttempt(...) -> RunReport(coverage_before, coverage_after, tests_kept, tests_discarded, repair_attempts_used, stop_reason). In-memory dataclasses, serialized to `coverloop-report.json`. All types live in `src/coverloop/models.py` — never duplicate them elsewhere.
+CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> GeneratedTest(target, test_file_path, source_code, model_used, assertion_count) -> RepairAttempt(...) -> RunReport(coverage_before, coverage_after, tests_kept, tests_discarded, repair_attempts_used, stop_reason). In-memory dataclasses, serialized to `reflecta-report.json`. All types live in `src/reflecta/models.py` — never duplicate them elsewhere.
 
 ## Hard rules (these are the product's integrity; never relax them)
-1. NEVER edit, overwrite, or delete a human-written test file. Generated tests go ONLY in `tests/_coverloop/test_coverloop_<module>_<n>.py`.
+1. NEVER edit, overwrite, or delete a human-written test file. Generated tests go ONLY in `tests/_reflecta/test_reflecta_<module>_<n>.py`.
 2. EVERY kept test must pass the assertion gate (real, non-trivial `assert`s, checked via AST) AND the coverage-delta gate (total coverage strictly increased). A passing test that does not move coverage is discarded.
 3. Repair attempts per target are capped by `--max-repairs` (default 2, the 2-failure rule). On exhaustion, mark the target `failed`/`escalated`, never loop forever.
 4. Generated tests run in a subprocess with a timeout. Never run them in-process.
 5. Secrets live in env (`GEMINI_API_KEY`, `GROQ_API_KEY`) loaded from `.env` (gitignored). Never commit, log, or put keys in the report.
-6. Only run coverloop against the user's own repositories. The free Gemini tier may train on inputs.
+6. Only run reflecta against the user's own repositories. The free Gemini tier may train on inputs.
 
 ## Architecture gotchas
 - The coverage signal comes from parsing `coverage json`, not stdout text. Always re-run `coverage json` after writing a test to measure the delta.
 - Map missed line numbers back to enclosing functions via the source AST, not regex.
-- Test file names use a monotonic per-module counter determined by scanning existing `_coverloop` files at write time — no manifest needed, names never collide across runs.
-- Free tiers rate-limit (429) and have daily caps. All provider calls go through `src/coverloop/llm/provider.py` — a wrapper with exponential backoff and a `BudgetExhausted` exception. Never call provider SDKs directly from feature code.
+- Test file names use a monotonic per-module counter determined by scanning existing `_reflecta` files at write time — no manifest needed, names never collide across runs.
+- Free tiers rate-limit (429) and have daily caps. All provider calls go through `src/reflecta/llm/provider.py` — a wrapper with exponential backoff and a `BudgetExhausted` exception. Never call provider SDKs directly from feature code.
 
 ## Repository structure
 Follow a senior-engineer layout: flat, discoverable, no clever nesting.
 
 ```
-coverloop/
+reflecta/
 ├── src/
-│   └── coverloop/
+│   └── reflecta/
 │       ├── __init__.py          # version only
-│       ├── __main__.py          # entry point: python -m coverloop
+│       ├── __main__.py          # entry point: python -m reflecta
 │       ├── models.py            # all dataclasses (single source of truth)
 │       ├── cli.py               # typer commands: run / clean / report
 │       ├── loop.py              # main orchestration loop
 │       ├── coverage_report.py   # extract_targets: coverage.json -> CoverageTarget list
 │       ├── selection.py         # select_next: ranks pending targets
-│       ├── generate.py          # generate_test: calls Gemini, writes _coverloop file
+│       ├── generate.py          # generate_test: calls Gemini, writes _reflecta file
 │       ├── runner.py            # run_test: subprocess + timeout
 │       ├── repair.py            # repair_test: Groq repair loop
 │       ├── gates.py             # passes_assertion_gate, passes_delta_gate
 │       ├── budget.py            # BudgetTracker: stop before hitting daily cap
-│       ├── report.py            # write/read coverloop-report.json
+│       ├── report.py            # write/read reflecta-report.json
 │       ├── prompts.py           # prompt templates (no logic, just strings)
 │       └── llm/
 │           ├── __init__.py
@@ -83,7 +83,7 @@ coverloop/
 │   ├── test_loop_happy.py
 │   ├── test_loop_budget.py
 │   ├── test_cli.py
-│   └── _coverloop/              # generated tests only — never edit by hand
+│   └── _reflecta/              # generated tests only — never edit by hand
 ├── examples/
 │   └── sample_project/          # fixture used by the walking skeleton and CLI demo
 │       ├── calc.py
@@ -116,7 +116,7 @@ Every completed unit of work gets its own commit and push. Never accumulate a da
 - One logical change per commit. If you can describe a commit with "and", split it.
 - Commit message format: `<type>: <what changed in imperative mood>`. Examples:
   - `feat: assertion gate rejects trivially-true asserts`
-  - `fix: per-module counter scans _coverloop dir at write time`
+  - `fix: per-module counter scans _reflecta dir at write time`
   - `test: add repair loop ceiling regression test`
   - `chore: add ruff to pyproject dev deps`
 - Include the task number in the message body when it maps 1-to-1 to a PLAN.md task.
@@ -137,7 +137,7 @@ Every completed unit of work gets its own commit and push. Never accumulate a da
 
 ## Repo etiquette
 - `/clear` between tasks. Stay under ~70% context.
-- Test-first wherever it fits; this codebase is about tests, so write coverloop's own test first, watch it fail, then implement.
+- Test-first wherever it fits; this codebase is about tests, so write reflecta's own test first, watch it fail, then implement.
 - Update PLAN.md (mark tasks done, add discovered sub-tasks) before ending a session.
 
 ## Hooks
