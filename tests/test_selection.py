@@ -6,7 +6,6 @@ All tests use in-memory CoverageTarget fixtures; no filesystem access needed.
 
 from pathlib import Path
 
-import pytest
 
 from reflecta.models import CoverageTarget, TargetStatus
 from reflecta.selection import select_next
