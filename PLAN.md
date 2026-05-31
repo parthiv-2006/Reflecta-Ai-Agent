@@ -8,7 +8,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
 
 ## Phase 4 — Walking skeleton
 
-- [ ] **0. End-to-end with everything faked but the risky part.**
+- [x] **0. End-to-end with everything faked but the risky part.**
   - Does: builds the fixture `examples/sample_project/calc.py` (3 small functions) with a partial test leaving one known gap. Runs `coverage run -m pytest && coverage json`. Calls `extract_targets` against the real `coverage.json` (not hardcoded line numbers) to confirm the fixture's missing lines come out correctly — this removes one variable when debugging a Gemini failure. Then makes ONE real Gemini Flash call to write a test into `tests/_coverloop/test_coverloop_calc_0.py`, reruns coverage, prints `coverage: BEFORE% -> AFTER%`.
   - Files: `examples/sample_project/`, `src/coverloop/skeleton.py`, `src/coverloop/llm/gemini.py` (minimal).
   - Verify: (1) `extract_targets` returns the expected `CoverageTarget` for the fixture's known gap. (2) `ast.parse(gemini_output)` succeeds — i.e., Gemini's raw response is syntactically valid Python before the test is even run. (3) The printed AFTER number is strictly higher than BEFORE on a real run. If `ast.parse` fails or the coverage number does not move, stop and revise the prompt before building anything else.
