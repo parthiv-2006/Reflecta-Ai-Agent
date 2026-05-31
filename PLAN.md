@@ -49,7 +49,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify: (1) with a mocked Gemini client, assert the prompt contains the missed lines and the file is written to the right path. (2) One live smoke test behind a `@pytest.mark.live` marker — run against 3 different `calc.py` gap shapes, all must return `ast.parse`-valid Python.
   - Commit: `"feat: Gemini test generation with prompt and file writer"`.
 
-- [ ] **4. Assertion gate.**
+- [x] **4. Assertion gate.**
   - Does: `passes_assertion_gate(test)` parses the test AST and rejects zero-assertion tests and trivially-true assertions (`assert True`, `assert 1 == 1`, asserting a literal against itself) before the test is run. This gate fires upstream of `run_test` in the loop; placing it here ensures the runner in Task 5 never receives a gateless test.
   - Files: `src/reflecta/gates.py`, `tests/test_gates_assertion.py`.
   - Verify (test-first): assertion-free test → rejected; `assert True` → rejected; `assert 1 == 1` → rejected; `assert add(2, 3) == 5` → accepted.
