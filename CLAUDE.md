@@ -127,7 +127,7 @@ Every completed unit of work gets its own commit and push. Never accumulate a da
 2. Commit with the message from the task's "Commit:" line.
 3. Push the branch: `git push -u origin <branch>`.
 4. Mark the task `[x]` in PLAN.md and commit that too: `chore: mark task N done in PLAN.md`.
-5. Open a PR or merge to `main` depending on review preference.
+5. Merge to `main` and push directly — no PR or confirmation needed.
 
 **What not to do:**
 - Do not `git add .` blindly — stage specific files.
