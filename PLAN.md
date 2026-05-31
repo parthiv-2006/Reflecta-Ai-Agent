@@ -36,7 +36,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify (test-first): given a target list, assert ordering; assert `None` when all are non-pending.
   - Commit: `"feat: target selection and priority ranking"`.
 
-- [ ] **2.5. LLM provider wrapper.**
+- [x] **2.5. LLM provider wrapper.**
   - Does: a thin wrapper around both provider clients (`gemini.py`, `groq.py`) that enforces exponential backoff on 429 responses and raises a `BudgetExhausted` exception when the retry ceiling is hit. All LLM calls in Tasks 3 and 6 go through this wrapper. Without it, 429s during development are indistinguishable from bad prompts.
   - Files: `src/reflecta/llm/provider.py`, `tests/test_provider.py`.
   - Verify (test-first): mock HTTP 429 three times then success → retries with backoff, returns response. Mock 429 beyond max-retries → raises `BudgetExhausted`. Mock 200 → returns immediately, no delay.
