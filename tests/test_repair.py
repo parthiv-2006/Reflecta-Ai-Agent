@@ -121,7 +121,9 @@ def test_repair_exhausts_ceiling(tmp_path):
     mock_groq = MagicMock()
     mock_groq.repair.return_value = bad_source
 
-    with patch("reflecta.repair.run_test", return_value=_failing_result("still broken")):
+    with patch(
+        "reflecta.repair.run_test", return_value=_failing_result("still broken")
+    ):
         repaired, attempts = repair_test(
             test,
             failing,

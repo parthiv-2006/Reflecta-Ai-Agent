@@ -14,7 +14,9 @@ def test_runner_uses_sys_executable(tmp_path):
     fake_proc.communicate.return_value = ("", "")
     fake_proc.returncode = 0
 
-    with patch("reflecta.runner.subprocess.Popen", return_value=fake_proc) as mock_popen:
+    with patch(
+        "reflecta.runner.subprocess.Popen", return_value=fake_proc
+    ) as mock_popen:
         run_test(test_file, tmp_path)
 
     cmd = mock_popen.call_args.args[0]
@@ -46,7 +48,9 @@ def test_runner_passes_scrubbed_env_to_subprocess(tmp_path, monkeypatch):
     fake_proc.communicate.return_value = ("", "")
     fake_proc.returncode = 0
 
-    with patch("reflecta.runner.subprocess.Popen", return_value=fake_proc) as mock_popen:
+    with patch(
+        "reflecta.runner.subprocess.Popen", return_value=fake_proc
+    ) as mock_popen:
         run_test(test_file, tmp_path)
 
     passed_env = mock_popen.call_args.kwargs["env"]
