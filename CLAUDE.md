@@ -52,6 +52,7 @@ reflecta/
 │       ├── __init__.py          # version only
 │       ├── __main__.py          # entry point: python -m reflecta
 │       ├── models.py            # all dataclasses (single source of truth)
+│       ├── config.py            # .env loading + API-key preflight (require_api_keys)
 │       ├── cli.py               # typer commands: run / clean / report
 │       ├── loop.py              # main orchestration loop
 │       ├── coverage_report.py   # extract_targets: coverage.json -> CoverageTarget list
@@ -83,6 +84,8 @@ reflecta/
 │   ├── test_loop_happy.py
 │   ├── test_loop_budget.py
 │   ├── test_cli.py
+│   ├── test_config.py
+│   ├── test_coverage_isolation.py
 │   └── _reflecta/              # generated tests only — never edit by hand
 ├── examples/
 │   └── sample_project/          # fixture used by the walking skeleton and CLI demo

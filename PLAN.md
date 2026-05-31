@@ -10,7 +10,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
 
 - [x] **0. End-to-end with everything faked but the risky part.**
   - Does: builds the fixture `examples/sample_project/calc.py` (3 small functions) with a partial test leaving one known gap. Runs `coverage run -m pytest && coverage json`. Calls `extract_targets` against the real `coverage.json` (not hardcoded line numbers) to confirm the fixture's missing lines come out correctly — this removes one variable when debugging a Gemini failure. Then makes ONE real Gemini Flash call to write a test into `tests/_reflecta/test_reflecta_calc_0.py`, reruns coverage, prints `coverage: BEFORE% -> AFTER%`.
-  - Files: `examples/sample_project/`, `src/reflecta/skeleton.py`, `src/reflecta/llm/gemini.py` (minimal).
+  - Files: `examples/sample_project/`, `src/reflecta/skeleton.py` (removed in the 0–9 hardening pass — see `docs/HARDENING-0-9.md` §4.1), `src/reflecta/llm/gemini.py` (minimal).
   - Verify: (1) `extract_targets` returns the expected `CoverageTarget` for the fixture's known gap. (2) `ast.parse(gemini_output)` succeeds — i.e., Gemini's raw response is syntactically valid Python before the test is even run. (3) The printed AFTER number is strictly higher than BEFORE on a real run. If `ast.parse` fails or the coverage number does not move, stop and revise the prompt before building anything else.
   - Commit: `"walking skeleton: gemini-written test moves real coverage"`.
 
@@ -93,6 +93,23 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
     - `reflecta clean` sub-verify: set up a fixture with both `tests/_reflecta/test_reflecta_calc_0.py` (generated) and `tests/test_calc.py` (human-written). Run `reflecta clean`. Confirm only the `_reflecta` file is removed; `tests/test_calc.py` is untouched. This is a hard rule — a bug here deletes human tests.
     - `reflecta report --last` reprints the JSON report from the previous run without re-running.
   - Commit: `"feat: CLI with run/clean/report commands"`.
+
+---
+
+## Hardening pass on tasks 0–9 (2026-05-31)
+
+A senior-review remediation of the completed 0–9 slices landed before Phase 6
+(13 commits, branch `fix/hardening-0-9` merged to `main`). Full detail and
+rationale: [`docs/HARDENING-0-9.md`](docs/HARDENING-0-9.md). Highlights:
+repair runs with `repo_path` cwd; `sys.executable` for subprocesses; generated
+tests run with `*_API_KEY` scrubbed from their env; correct import paths for
+class methods / packaged modules; per-target error isolation; the two missing
+SPEC stop conditions (`target_coverage`, `stall_k`); `.env` preflight; existing
+tests fed into the prompt; coverage isolated to `.reflecta/`; structured logging
++ `run --verbose`; new CLI flags `--max-llm-calls/--target-coverage/--stall-k`.
+This partially anticipates Phase 6 items 11–13 but does not close them — the
+full edge-case matrix (10), provider fallback (11), temp-tree isolation (12),
+and the gate stress test (14) remain open below.
 
 ---
 
