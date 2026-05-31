@@ -154,6 +154,62 @@ def test_budget_exhausted_stops_loop(tmp_path):
     assert call_count["n"] <= 2
 
 
+def test_generation_exception_marks_failed_and_continues(tmp_path):
+    """HARDENING-0-9 §1.6: an exception on one target marks it FAILED and the
+    loop proceeds to the next target instead of crashing."""
+    from reflecta.loop import run_loop
+
+    targets = [_target("func_a"), _target("func_b")]
+    gen_b = _good_test(targets[1], tmp_path)
+
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+        if target.qualified_name == "func_a":
+            raise ImportError("un-importable target module")
+        return gen_b
+
+    coverage_seq = iter([50.0, 60.0])
+
+    with (
+        patch("reflecta.loop.extract_targets", return_value=targets),
+        patch("reflecta.loop.generate_test", side_effect=fake_generate),
+        patch(
+            "reflecta.loop.run_test",
+            side_effect=lambda *a, **kw: RunResult(passed=True, traceback="", duration=0.1),
+        ),
+        patch("reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)),
+    ):
+        report = run_loop(tmp_path, max_iters=10)
+
+    assert targets[0].status == TargetStatus.FAILED
+    assert targets[1].status == TargetStatus.KEPT
+    assert report.tests_kept == 1
+    assert report.stop_reason == "exhausted"
+
+
+def test_provider_budget_exhausted_stops_cleanly(tmp_path):
+    """HARDENING-0-9 §1.5: a BudgetExhausted from the provider stops the loop
+    with stop_reason='budget' rather than propagating a traceback."""
+    from reflecta.llm.provider import BudgetExhausted
+    from reflecta.loop import run_loop
+
+    targets = [_target("func_a"), _target("func_b")]
+
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+        raise BudgetExhausted("rate-limited after 5 retries")
+
+    with (
+        patch("reflecta.loop.extract_targets", return_value=targets),
+        patch("reflecta.loop.generate_test", side_effect=fake_generate),
+        patch("reflecta.loop.measure_coverage", side_effect=lambda *a: 50.0),
+    ):
+        report = run_loop(tmp_path, max_iters=10)
+
+    assert report.stop_reason == "budget"
+    assert targets[0].status == TargetStatus.FAILED
+    # Loop stopped at the first target; the second was never attempted.
+    assert targets[1].status == TargetStatus.PENDING
+
+
 def test_max_iters_stops_at_two(tmp_path):
     """max_iters=2 with 3 targets → loop stops after exactly 2 iterations."""
     from reflecta.loop import run_loop

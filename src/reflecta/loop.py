@@ -1,4 +1,5 @@
 import json
+import logging
 import subprocess
 import sys
 from datetime import datetime
@@ -8,10 +9,13 @@ from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import generate_test
+from reflecta.llm.provider import BudgetExhausted
 from reflecta.models import GeneratedTest, RunReport, TargetStatus
 from reflecta.repair import repair_test
 from reflecta.runner import child_env, run_test
 from reflecta.selection import select_next
+
+logger = logging.getLogger("reflecta")
 
 
 def measure_coverage(repo_path: Path) -> float:
@@ -102,58 +106,74 @@ def run_loop(
         source = target.file_path.read_text(encoding="utf-8") if target.file_path.exists() else ""
         existing_tests = ""
 
-        test = generate_test(
-            target,
-            source,
-            existing_tests,
-            repo_path=repo_path,
-            gemini_client=gemini_client,
-        )
-        budget.charge(1)
-
-        if not passes_assertion_gate(test):
-            test.test_file_path.unlink(missing_ok=True)
-            target.status = TargetStatus.DISCARDED
-            report.tests_discarded += 1
-            iter_count += 1
-            continue
-
-        result = run_test(test.test_file_path, repo_path)
-
-        if not result.passed:
-            if budget.exhausted():
-                test.test_file_path.unlink(missing_ok=True)
-                target.status = TargetStatus.FAILED
-                iter_count += 1
-                report.stop_reason = "budget"
-                break
-
-            repaired, attempts = repair_test(
-                test,
-                result,
+        try:
+            test = generate_test(
+                target,
                 source,
+                existing_tests,
                 repo_path=repo_path,
-                max_repairs=max_repairs,
-                groq_client=groq_client,
+                gemini_client=gemini_client,
             )
-            report.repair_attempts_used += len(attempts)
-            budget.charge(len(attempts))
+            budget.charge(1)
 
-            if repaired is None:
-                target.status = TargetStatus.FAILED
+            if not passes_assertion_gate(test):
+                test.test_file_path.unlink(missing_ok=True)
+                target.status = TargetStatus.DISCARDED
+                report.tests_discarded += 1
                 iter_count += 1
                 continue
 
-            # repair succeeded — treat repaired test as the passing test
-            test = repaired
+            result = run_test(test.test_file_path, repo_path)
 
-        coverage_after = measure_coverage(repo_path)
-        outcome = process_test(test, coverage_before=coverage_before, coverage_after=coverage_after)
-        if outcome == "kept":
-            coverage_before = coverage_after
-            report.tests_kept += 1
-        else:
-            report.tests_discarded += 1
+            if not result.passed:
+                if budget.exhausted():
+                    test.test_file_path.unlink(missing_ok=True)
+                    target.status = TargetStatus.FAILED
+                    iter_count += 1
+                    report.stop_reason = "budget"
+                    break
+
+                repaired, attempts = repair_test(
+                    test,
+                    result,
+                    source,
+                    repo_path=repo_path,
+                    max_repairs=max_repairs,
+                    groq_client=groq_client,
+                )
+                report.repair_attempts_used += len(attempts)
+                budget.charge(len(attempts))
+
+                if repaired is None:
+                    target.status = TargetStatus.FAILED
+                    iter_count += 1
+                    continue
+
+                # repair succeeded — treat repaired test as the passing test
+                test = repaired
+
+            coverage_after = measure_coverage(repo_path)
+            outcome = process_test(
+                test, coverage_before=coverage_before, coverage_after=coverage_after
+            )
+            if outcome == "kept":
+                coverage_before = coverage_after
+                report.tests_kept += 1
+            else:
+                report.tests_discarded += 1
+        except BudgetExhausted:
+            # Provider signalled the free tier is exhausted (429 ceiling). Stop
+            # cleanly so the report is still written. HARDENING-0-9 §1.5.
+            logger.warning("provider budget exhausted on target %s", target.qualified_name)
+            target.status = TargetStatus.FAILED
+            report.stop_reason = "budget"
+            break
+        except Exception:
+            # One bad target must not abort the whole run. HARDENING-0-9 §1.6.
+            logger.exception("target %s failed unexpectedly", target.qualified_name)
+            target.status = TargetStatus.FAILED
+            iter_count += 1
+            continue
 
         iter_count += 1
     else:
