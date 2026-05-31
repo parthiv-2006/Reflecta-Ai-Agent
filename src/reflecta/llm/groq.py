@@ -2,21 +2,10 @@ import os
 
 from groq import Groq
 
-from reflecta.llm.provider import RateLimitError, call_with_retry
+from reflecta.llm.provider import RateLimitError, call_with_retry, strip_fences
 
 MODEL_FAST = "llama-3.1-8b-instant"
 MODEL_HARD = "llama-3.3-70b-versatile"
-
-
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines)
-    return text.strip()
 
 
 def repair(prompt: str, *, model: str = MODEL_FAST, client=None) -> str:
@@ -36,4 +25,4 @@ def repair(prompt: str, *, model: str = MODEL_FAST, client=None) -> str:
             raise
 
     raw = call_with_retry(_call)
-    return _strip_fences(raw)
+    return strip_fences(raw)

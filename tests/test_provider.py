@@ -1,6 +1,21 @@
 import pytest
 
-from reflecta.llm.provider import BudgetExhausted, RateLimitError, call_with_retry
+from reflecta.llm.provider import (
+    BudgetExhausted,
+    RateLimitError,
+    call_with_retry,
+    strip_fences,
+)
+
+
+def test_strip_fences_removes_language_fence():
+    raw = "```python\nfrom calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n```"
+    assert strip_fences(raw) == "from calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3"
+
+
+def test_strip_fences_noop_without_fence():
+    raw = "def test_x():\n    assert True\n"
+    assert strip_fences(raw) == "def test_x():\n    assert True"
 
 
 def test_success_no_delay(monkeypatch):
