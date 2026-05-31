@@ -27,7 +27,7 @@ def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
     Kept under ``.reflecta/`` so reflecta never clobbers the target repo's own
     ``.coverage`` / ``coverage.json``. HARDENING-0-9 §3.1.
     """
-    d = Path(repo_path) / COVERAGE_DIR
+    d = Path(repo_path).resolve() / COVERAGE_DIR
     d.mkdir(parents=True, exist_ok=True)
     return d / ".coverage", d / "coverage.json"
 
@@ -38,7 +38,7 @@ def measure_coverage(repo_path: Path) -> float:
     Coverage data and the json report are written to ``.reflecta/`` via an
     explicit ``--data-file`` so the repo's own coverage artifacts are untouched.
     """
-    repo_path = Path(repo_path)
+    repo_path = Path(repo_path).resolve()
     data_file, json_file = coverage_paths(repo_path)
     env = child_env()
     subprocess.run(
@@ -112,7 +112,7 @@ def run_loop(
     target coverage reached, max_iters hit, coverage stalled across ``stall_k``
     consecutive targets, or the LLM budget is depleted. HARDENING-0-9 §2.1.
     """
-    repo_path = Path(repo_path)
+    repo_path = Path(repo_path).resolve()
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
 
     coverage_before = measure_coverage(repo_path)

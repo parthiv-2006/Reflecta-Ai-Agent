@@ -1,6 +1,8 @@
 """HARDENING-0-9 §3.1 — measure_coverage must not clobber the repo's own
 coverage artifacts."""
 
+import os
+
 from reflecta.loop import coverage_paths, measure_coverage
 
 
@@ -29,3 +31,22 @@ def test_measure_coverage_does_not_touch_repo_coverage_files(tmp_path):
     # reflecta wrote into its own workspace instead
     _, owned_json = coverage_paths(tmp_path)
     assert owned_json.exists()
+
+
+def test_measure_coverage_works_with_relative_path(tmp_path, monkeypatch):
+    """Regression: a relative --path must not double the cwd and report 0% / no
+    targets (the nested examples/examples bug)."""
+    _make_repo(tmp_path)
+    # Run from the parent so the repo is reachable by a relative name.
+    monkeypatch.chdir(tmp_path.parent)
+    rel = tmp_path.name
+
+    pct = measure_coverage(rel)
+
+    assert pct > 0.0
+    # No doubled directory created under the repo.
+    assert not (tmp_path / rel).exists()
+    # Artifact landed in the single, resolved workspace.
+    _, owned_json = coverage_paths(tmp_path)
+    assert owned_json.exists()
+    assert os.path.isabs(str(owned_json))
