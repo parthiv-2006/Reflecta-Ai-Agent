@@ -72,6 +72,108 @@ def test_counter_increments(monkeypatch, tmp_path):
     assert expected.exists()
 
 
+def test_collect_existing_tests_includes_human_excludes_reflecta(tmp_path):
+    from reflecta.generate import collect_existing_tests
+
+    tests_dir = tmp_path / "tests"
+    (tests_dir).mkdir()
+    (tests_dir / "test_calc_partial.py").write_text(
+        "def test_human():\n    assert True\n"
+    )
+    reflecta_dir = tests_dir / "_reflecta"
+    reflecta_dir.mkdir()
+    (reflecta_dir / "test_reflecta_calc_0.py").write_text(
+        "# generated, must be excluded\n"
+    )
+    # unrelated module's tests are not pulled in
+    (tests_dir / "test_other.py").write_text("def test_other(): assert True\n")
+
+    result = collect_existing_tests(tmp_path, "calc")
+
+    assert "test_human" in result
+    assert "generated, must be excluded" not in result
+    assert "test_other" not in result
+
+
+def test_collect_existing_tests_caps_size(tmp_path):
+    from reflecta.generate import collect_existing_tests
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_calc_big.py").write_text("x = 1\n" * 5000)
+
+    result = collect_existing_tests(tmp_path, "calc", max_chars=100)
+
+    assert len(result) <= 100
+
+
+def test_collect_existing_tests_no_tests_dir(tmp_path):
+    from reflecta.generate import collect_existing_tests
+
+    assert collect_existing_tests(tmp_path, "calc") == ""
+
+
+def test_generated_test_has_assertion_count(monkeypatch, tmp_path):
+    """HARDENING-0-9 §4.5: assertion_count reflects the real number of asserts."""
+    monkeypatch.setattr(
+        "reflecta.generate.gemini.generate",
+        lambda *a, **kw: (
+            "from calc import add\n\ndef test_a():\n    assert add(1, 1) == 2\n    assert add(2, 2) == 4\n"
+        ),
+    )
+    target = _make_target(tmp_path / "calc.py", [2])
+    result = generate_test(
+        target, "def add(a, b): return a + b", "", repo_path=tmp_path
+    )
+    assert result.assertion_count == 2
+
+
+def test_module_import_path_flat_module(tmp_path):
+    from reflecta.generate import module_import_path
+
+    f = tmp_path / "calc.py"
+    f.write_text("x = 1\n")
+    assert module_import_path(f, tmp_path) == "calc"
+
+
+def test_module_import_path_packaged_module(tmp_path):
+    from reflecta.generate import module_import_path
+
+    pkg = tmp_path / "pkg" / "sub"
+    pkg.mkdir(parents=True)
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (pkg / "__init__.py").write_text("")
+    mod = pkg / "mod.py"
+    mod.write_text("y = 2\n")
+    assert module_import_path(mod, tmp_path) == "pkg.sub.mod"
+
+
+def test_method_target_imports_class_not_method(monkeypatch, tmp_path):
+    """Regression (HARDENING-0-9 §1.3): a Class.method target must import the
+    class, never `from Class import method`."""
+    captured = {}
+
+    def mock_generate(prompt, *, client=None):
+        captured["prompt"] = prompt
+        return SIMPLE_TEST_SOURCE
+
+    monkeypatch.setattr("reflecta.generate.gemini.generate", mock_generate)
+
+    target = CoverageTarget(
+        file_path=tmp_path / "calc.py",
+        qualified_name="Calculator.add",
+        missing_lines=[5],
+        priority=1.0,
+        status=TargetStatus.PENDING,
+    )
+    generate_test(
+        target, "class Calculator:\n    def add(self): ...", "", repo_path=tmp_path
+    )
+
+    assert "from calc import Calculator" in captured["prompt"]
+    assert "from Calculator import add" not in captured["prompt"]
+
+
 @pytest.mark.live
 def test_live_ast_valid():
     calc_path = Path("examples/sample_project/calc.py")

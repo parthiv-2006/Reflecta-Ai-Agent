@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .coverage
 coverage.json
+.reflecta/
 .pytest_cache/
 *.egg-info/
 build/

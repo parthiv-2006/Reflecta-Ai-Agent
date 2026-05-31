@@ -58,7 +58,12 @@ def test_repair_fixes_on_attempt_1(tmp_path):
 
     with patch("reflecta.repair.run_test", return_value=_passing_result()):
         repaired, attempts = repair_test(
-            test, failing, "def add(a, b): return a + b", max_repairs=2, groq_client=mock_groq
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
         )
 
     assert repaired is not None
@@ -87,7 +92,12 @@ def test_repair_fixes_on_attempt_2(tmp_path):
 
     with patch("reflecta.repair.run_test", side_effect=run_results):
         repaired, attempts = repair_test(
-            test, failing, "def add(a, b): return a + b", max_repairs=2, groq_client=mock_groq
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
         )
 
     assert repaired is not None
@@ -111,9 +121,16 @@ def test_repair_exhausts_ceiling(tmp_path):
     mock_groq = MagicMock()
     mock_groq.repair.return_value = bad_source
 
-    with patch("reflecta.repair.run_test", return_value=_failing_result("still broken")):
+    with patch(
+        "reflecta.repair.run_test", return_value=_failing_result("still broken")
+    ):
         repaired, attempts = repair_test(
-            test, failing, "def add(a, b): return a + b", max_repairs=2, groq_client=mock_groq
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
         )
 
     assert repaired is None
@@ -142,8 +159,52 @@ def test_repair_uses_fast_model_first(tmp_path):
 
     with patch("reflecta.repair.run_test", return_value=_passing_result()):
         repair_test(
-            test, failing, "def add(a, b): return a + b", max_repairs=2, groq_client=mock_groq
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
         )
 
     first_call_kwargs = mock_groq.repair.call_args_list[0]
     assert first_call_kwargs.kwargs.get("model") == MODEL_FAST
+
+
+def test_repair_runs_test_with_repo_path_cwd(tmp_path):
+    """Regression (HARDENING-0-9 §1.1): repaired tests must run with cwd=repo_path,
+    not the test file's parent directory."""
+    target = _make_target(tmp_path)
+    # Place the generated test in tests/_reflecta/ so its parent differs from repo_path,
+    # exactly as in a real run.
+    reflecta_dir = tmp_path / "tests" / "_reflecta"
+    reflecta_dir.mkdir(parents=True)
+    test_file = reflecta_dir / "test_reflecta_calc_0.py"
+    test_file.write_text("def test_add():\n    assert add(1, 2) == 3\n")
+    test = GeneratedTest(
+        target=target,
+        test_file_path=test_file,
+        source_code=test_file.read_text(),
+        model_used="gemini-2.5-flash",
+        assertion_count=1,
+    )
+    failing = _failing_result()
+
+    fixed_source = "from calc import add\ndef test_add():\n    assert add(1, 2) == 3\n"
+    mock_groq = MagicMock()
+    mock_groq.repair.return_value = fixed_source
+
+    with patch("reflecta.repair.run_test", return_value=_passing_result()) as mock_run:
+        repair_test(
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
+        )
+
+    # run_test(test_file, repo_path) — second positional arg must be repo_path
+    called_repo_path = mock_run.call_args.args[1]
+    assert called_repo_path == tmp_path
+    assert called_repo_path != test.test_file_path.parent

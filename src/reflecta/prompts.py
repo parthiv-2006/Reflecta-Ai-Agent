@@ -13,6 +13,7 @@ def build_repair_prompt(source: str, test_source: str, traceback: str) -> str:
 def build_generation_prompt(
     source: str,
     qualified_name: str,
+    module_path: str,
     missing_lines: list[int],
     existing_tests: str,
 ) -> str:
@@ -21,12 +22,28 @@ def build_generation_prompt(
         if existing_tests.strip()
         else ""
     )
+
+    # The first dotted component is the importable top-level name: the function
+    # itself for a free function, or the enclosing class for a method. Importing
+    # the class (not the method) is what makes method targets work.
+    top_symbol = qualified_name.split(".")[0]
+    is_method = "." in qualified_name
+    import_line = f"from {module_path} import {top_symbol}"
+    if is_method:
+        method_name = qualified_name.split(".")[-1]
+        target_hint = (
+            f"- Import the class: `{import_line}`\n"
+            f"- Instantiate `{top_symbol}` and call its `{method_name}` method.\n"
+        )
+    else:
+        target_hint = f"- Import the target directly: `{import_line}`\n"
+
     return (
         "Write a pytest test file for the Python source below.\n\n"
         "RULES:\n"
         "- Output ONLY valid Python code. No markdown fences. No explanation.\n"
         "- The first line must be an import statement.\n"
-        f"- Import the target directly: `from {qualified_name.split('.')[0]} import {qualified_name.split('.')[-1]}`\n"
+        f"{target_hint}"
         "- Write at least two test functions that exercise the target with real assertions.\n"
         "- Do NOT use `assert True` or trivially-true assertions.\n\n"
         f"Source:\n{source}\n\n"

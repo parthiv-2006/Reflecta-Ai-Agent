@@ -1,6 +1,20 @@
 import time
 
 
+def strip_fences(text: str) -> str:
+    """Remove a leading ```lang fence and trailing ``` from an LLM response.
+
+    Shared by the Gemini and Groq clients (HARDENING-0-9 §4.3).
+    """
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines)
+    return text.strip()
+
+
 class RateLimitError(Exception):
     """Raised by provider clients when the API returns 429."""
 
