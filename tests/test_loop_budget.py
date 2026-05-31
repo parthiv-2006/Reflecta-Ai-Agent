@@ -210,6 +210,62 @@ def test_provider_budget_exhausted_stops_cleanly(tmp_path):
     assert targets[1].status == TargetStatus.PENDING
 
 
+def test_target_coverage_reached_stops_loop(tmp_path):
+    """HARDENING-0-9 §2.1: once coverage meets target_coverage the loop stops
+    with stop_reason='target_reached'."""
+    from reflecta.loop import run_loop
+
+    targets = [_target("func_a"), _target("func_b")]
+
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+        return _good_test(target, tmp_path)
+
+    def fake_run(test_file, repo_path, timeout_s=30):
+        return RunResult(passed=True, traceback="", duration=0.1)
+
+    # initial 50 → first keep raises to 60, which meets target 55
+    coverage_seq = iter([50.0, 60.0])
+
+    with (
+        patch("reflecta.loop.extract_targets", return_value=targets),
+        patch("reflecta.loop.generate_test", side_effect=fake_generate),
+        patch("reflecta.loop.run_test", side_effect=fake_run),
+        patch("reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)),
+    ):
+        report = run_loop(tmp_path, max_iters=10, target_coverage=55.0)
+
+    assert report.stop_reason == "target_reached"
+    assert report.tests_kept == 1
+    assert targets[1].status == TargetStatus.PENDING
+
+
+def test_coverage_stall_stops_loop(tmp_path):
+    """HARDENING-0-9 §2.1: stall_k consecutive non-improving targets stop the
+    loop with stop_reason='stalled'."""
+    from reflecta.loop import run_loop
+
+    targets = [_target("func_a"), _target("func_b"), _target("func_c")]
+
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+        return _good_test(target, tmp_path)
+
+    def fake_run(test_file, repo_path, timeout_s=30):
+        return RunResult(passed=True, traceback="", duration=0.1)
+
+    # coverage never rises → every target discarded by the delta gate
+    with (
+        patch("reflecta.loop.extract_targets", return_value=targets),
+        patch("reflecta.loop.generate_test", side_effect=fake_generate),
+        patch("reflecta.loop.run_test", side_effect=fake_run),
+        patch("reflecta.loop.measure_coverage", side_effect=lambda *a: 50.0),
+    ):
+        report = run_loop(tmp_path, max_iters=10, stall_k=2)
+
+    assert report.stop_reason == "stalled"
+    assert report.tests_discarded == 2
+    assert targets[2].status == TargetStatus.PENDING
+
+
 def test_max_iters_stops_at_two(tmp_path):
     """max_iters=2 with 3 targets → loop stops after exactly 2 iterations."""
     from reflecta.loop import run_loop

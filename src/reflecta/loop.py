@@ -62,14 +62,17 @@ def run_loop(
     max_iters: int = 10,
     max_repairs: int = 2,
     max_llm_calls: int = 50,
+    target_coverage: float | None = None,
+    stall_k: int = 3,
     gemini_client=None,
     groq_client=None,
 ) -> RunReport:
     """Main orchestration loop.
 
     extract → select → generate → assertion gate → run → [repair] → delta gate
-    → keep/discard. Repeats until all targets exhausted, max_iters reached,
-    or the LLM budget is depleted.
+    → keep/discard. Repeats until one of the four SPEC stop conditions fires:
+    target coverage reached, max_iters hit, coverage stalled across ``stall_k``
+    consecutive targets, or the LLM budget is depleted. HARDENING-0-9 §2.1.
     """
     repo_path = Path(repo_path)
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
@@ -92,7 +95,16 @@ def run_loop(
     )
 
     iter_count = 0
+    stall = 0  # consecutive targets that did not raise coverage
     while (target := select_next(targets)) is not None:
+        if target_coverage is not None and coverage_before >= target_coverage:
+            report.stop_reason = "target_reached"
+            break
+
+        if stall >= stall_k:
+            report.stop_reason = "stalled"
+            break
+
         if iter_count >= max_iters:
             report.stop_reason = "max_iters"
             break
@@ -121,6 +133,7 @@ def run_loop(
                 target.status = TargetStatus.DISCARDED
                 report.tests_discarded += 1
                 iter_count += 1
+                stall += 1
                 continue
 
             result = run_test(test.test_file_path, repo_path)
@@ -147,6 +160,7 @@ def run_loop(
                 if repaired is None:
                     target.status = TargetStatus.FAILED
                     iter_count += 1
+                    stall += 1
                     continue
 
                 # repair succeeded — treat repaired test as the passing test
@@ -159,8 +173,10 @@ def run_loop(
             if outcome == "kept":
                 coverage_before = coverage_after
                 report.tests_kept += 1
+                stall = 0
             else:
                 report.tests_discarded += 1
+                stall += 1
         except BudgetExhausted:
             # Provider signalled the free tier is exhausted (429 ceiling). Stop
             # cleanly so the report is still written. HARDENING-0-9 §1.5.
@@ -173,6 +189,7 @@ def run_loop(
             logger.exception("target %s failed unexpectedly", target.qualified_name)
             target.status = TargetStatus.FAILED
             iter_count += 1
+            stall += 1
             continue
 
         iter_count += 1
