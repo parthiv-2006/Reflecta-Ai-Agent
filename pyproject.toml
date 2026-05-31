@@ -28,7 +28,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-addopts = ["--import-mode=importlib"]
+addopts = ["--import-mode=importlib", "-m", "not live"]
 markers = ["live: requires real API keys — skipped in CI"]
 
 [tool.coverage.run]
