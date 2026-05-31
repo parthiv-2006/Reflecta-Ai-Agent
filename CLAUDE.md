@@ -1,0 +1,63 @@
+# CLAUDE.md — coverloop
+
+## What this is
+coverloop finds untested Python code, writes targeted pytest tests for it using free LLM tiers, runs them, repairs failures, and keeps only tests that raise coverage. The "self-improving" property comes from real execution (pytest + coverage.py), not from an LLM narrating a plan.
+
+## Commands
+- Install deps: `uv sync` (or `pip install -e .`)
+- Run tests: `pytest`
+- Coverage (the machine signal this tool consumes): `coverage run -m pytest && coverage json -o coverage.json`
+- Lint/format: `ruff check . && ruff format .`
+- Run the tool: `python -m coverloop run --path <dir>`
+- Run a single test: `pytest tests/test_x.py::test_name -q`
+
+## Stack
+- Python 3.11, pytest, coverage.py
+- Generation: Gemini Flash via `google-genai` (large context, drafts whole test files)
+- Triage + repair: Groq via `groq` (Llama 3.1 8B for parse/rank/first repairs, 3.3 70B for hard repairs)
+- Escalation (v2 only): `claude-agent-sdk`
+- CLI: typer. Format: ruff.
+
+## Free-stack routing (do not violate)
+- Orchestration is deterministic Python. Do NOT turn the main loop into an LLM agent.
+- Coverage parsing / target ranking -> Groq 8B.
+- Test generation from full source -> Gemini Flash.
+- Test repair from traceback -> Groq (8B, then 70B).
+- Claude is the escalation path only (v2), never the main loop. Keep Claude calls rare so the project stays within free/subscription usage.
+
+## Data model (see SPEC.md for full)
+CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> GeneratedTest(target, test_file_path, source_code, model_used, assertion_count) -> RepairAttempt(...) -> RunReport(coverage_before, coverage_after, tests_kept, tests_discarded, repair_attempts_used, stop_reason). In-memory dataclasses, serialized to `coverloop-report.json`.
+
+## Hard rules (these are the product's integrity; never relax them)
+1. NEVER edit, overwrite, or delete a human-written test file. Generated tests go ONLY in `tests/_coverloop/test_coverloop_<module>_<n>.py`.
+2. EVERY kept test must pass the assertion gate (real, non-trivial `assert`s, checked via AST) AND the coverage-delta gate (total coverage strictly increased). A passing test that does not move coverage is discarded.
+3. Repair attempts per target are capped by `--max-repairs` (default 2, the 2-failure rule). On exhaustion, mark the target `failed`/`escalated`, never loop forever.
+4. Generated tests run in a subprocess with a timeout. Never run them in-process.
+5. Secrets live in env (`GEMINI_API_KEY`, `GROQ_API_KEY`) loaded from `.env` (gitignored). Never commit, log, or put keys in the report.
+6. Only run coverloop against the user's own repositories. The free Gemini tier may train on inputs.
+
+## Architecture gotchas
+- The coverage signal comes from parsing `coverage json`, not stdout text. Always re-run `coverage json` after writing a test to measure the delta.
+- Map missed line numbers back to enclosing functions via the source AST, not regex.
+- Test file names use a monotonic per-module counter; never collide, never reuse.
+- Free tiers rate-limit (429) and have daily caps. All provider calls go through a wrapper with exponential backoff and a budget tracker.
+
+## Repo etiquette
+- Commit after every working slice, small and reviewed. Update PLAN.md.
+- `/clear` between tasks. Stay under ~70% context.
+- Test-first wherever it fits; this codebase is about tests, so write coverloop's own test first, watch it fail, then implement.
+
+## Hooks
+PostToolUse hook auto-formats edited Python with ruff. Sketch for `.claude/settings.json`:
+```jsonc
+"hooks": {
+  "PostToolUse": [
+    { "matcher": "Edit|Write",
+      "hooks": [{ "type": "command", "command": "ruff format \"$CLAUDE_FILE_PATH\" 2>/dev/null || true" }] }
+  ]
+}
+```
+
+## Pointers
+- Spec and contracts: SPEC.md
+- Task sequence and status: PLAN.md
