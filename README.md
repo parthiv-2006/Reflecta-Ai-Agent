@@ -4,7 +4,7 @@ Reflecta uses LLMs to find untested Python code, write targeted pytest tests, ru
 
 ## Key Design Choices
 
-* **Model Routing for Free Tiers:** Rather than running everything on one model, the orchestrator divides tasks based on token and rate limits. Gemini Flash writes the initial test drafts using the full source file, and Groq Llama 3 handles triage and iterative code repairs.
+* **Model Routing for Free Tiers:** Rather than running everything on one model, the orchestrator divides tasks based on token and rate limits. Gemini Flash writes the initial test drafts using the full source file, Groq Llama 3 handles triage and iterative code repairs, and Claude (via the Claude Agent SDK) acts as the escalation path for difficult, stuck targets.
 * **AST Quality Gates:** To prevent useless tests (such as assertions that check `assert True`), the codebase parses the generated test's Abstract Syntax Tree. Tests with trivial or missing assertions are deleted.
 * **Coverage Delta Checks:** Reflecta runs coverage tools before and after writing tests. If total project coverage does not rise, the test file is discarded.
 * **Process Isolation:** Tests run in subprocesses with strict timeouts. If a generated test hangs or loops infinitely, the runner terminates it and passes the timeout traceback back to the repair loop.
@@ -13,7 +13,7 @@ Reflecta uses LLMs to find untested Python code, write targeted pytest tests, ru
 
 ## Orchestration Loop
 
-Reflecta uses a deterministic orchestrator rather than an LLM agent to control the main loop. The program parses raw coverage data, invokes models for code changes, and cleans up the workspace based on test runner outcomes.
+Reflecta uses a deterministic orchestrator rather than an LLM agent to control the main loop. The program parses raw coverage data, invokes models for test generation (Gemini) and first-line repairs (Groq), escalates hard failures to an agentic subagent (Claude), and cleans up the workspace based on test runner outcomes.
 
 ```mermaid
 graph TD
@@ -25,7 +25,10 @@ graph TD
     E -- Yes --> G[Run test in Subprocess with Timeout]
     G -- Failed / Exception --> H{Attempts < Max?}
     H -- Yes --> I[Repair test via Groq Llama 3.1/3.3] --> G
-    H -- No --> J[Delete file & mark Failed]
+    H -- No --> O[Escalate: Repair via Claude Agent SDK]
+    O --> P{Claude Repair Success?}
+    P -- Yes --> G
+    P -- No --> J[Delete file & mark Failed]
     G -- Passed --> K[Re-run full coverage & check Delta]
     K --> L{Is coverage strictly higher?}
     L -- Yes --> M[Keep test file & mark Kept]
@@ -41,9 +44,10 @@ graph TD
 ## Technical Implementation
 
 ### Multi-Model API Routing
-To run on free developer API tiers, the orchestrator divides labor between two providers:
+The orchestrator divides labor between three models to optimize cost, speed, and accuracy:
 * **Gemini Flash (google-genai):** Used for test drafting. The prompt includes the full source module and existing tests, which fits well within Gemini's 1M-token context window.
 * **Groq Llama 3.1 8B / 3.3 70B (groq):** Used for fast triage and code repairs. The inputs are small (typically tracebacks or single failing test functions) so they run on Groq to prioritize speed and stay under request-per-minute limits.
+* **Claude (claude-agent-sdk):** Used as the escalation path. If Groq fails to repair a test after the maximum number of attempts, Reflecta spawns a Claude Agent SDK subagent. Equipped with file-editing and bash execution tools, Claude resolves complex setups and mock dependencies without consuming pay-as-you-go API credits.
 
 ### Quality Control
 Automatic test generation can easily lead to "coverage theater" (passing tests that do not check behavior). Reflecta blocks this with two validators:
@@ -92,7 +96,7 @@ uv sync
 pip install -e .[dev]
 ```
 
-### 3. Configure API Credentials
+### 3. Configure Credentials
 Create a `.env` file in the root directory:
 
 ```bash
@@ -104,6 +108,8 @@ Open `.env` and fill in your keys (both models offer free tiers):
 GEMINI_API_KEY=your_gemini_api_key_here
 GROQ_API_KEY=your_groq_api_key_here
 ```
+
+To enable the Claude escalation path, verify you are logged in to the Claude CLI (Claude Code) on your system. Reflecta communicates with the Claude Agent SDK via local auth, utilizing your active Claude Pro or Max subscription.
 
 ---
 
@@ -161,7 +167,6 @@ coverage json -o coverage.json
 
 ## Roadmap
 
-* **Claude Agent SDK Integration:** Escalate complex targets (like database layers needing heavy mocks) to a Claude-backed subagent with active bash and file-edit capabilities.
 * **Mutation Testing:** Move beyond line coverage to evaluate test quality using mutation scoring (injecting faults into code to verify if tests fail).
 * **Branch-Coverage Target Selection:** Parse missing branch nodes from the coverage output to target specific code paths.
 * **CI/CD Integration:** Run as a GitHub Action and automatically submit Pull Requests containing validated, coverage-raising tests.
