@@ -28,11 +28,13 @@ def _minimal_report(repo_path: Path) -> RunReport:
 # ---------------------------------------------------------------------------
 
 
-def test_run_writes_report_and_prints_summary(tmp_path):
+def test_run_writes_report_and_prints_summary(tmp_path, monkeypatch):
     """reflecta run writes reflecta-report.json and prints the summary."""
     from reflecta.cli import app
     from typer.testing import CliRunner
 
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
     report = _minimal_report(tmp_path)
 
     with patch("reflecta.cli.run_loop", return_value=report):
@@ -48,11 +50,13 @@ def test_run_writes_report_and_prints_summary(tmp_path):
     assert "78.5" in result.output
 
 
-def test_run_summary_format(tmp_path):
+def test_run_summary_format(tmp_path, monkeypatch):
     """Summary line shows before/after/delta, kept, discarded, repairs, stop reason."""
     from reflecta.cli import app
     from typer.testing import CliRunner
 
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
     report = _minimal_report(tmp_path)
 
     with patch("reflecta.cli.run_loop", return_value=report):

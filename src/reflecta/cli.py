@@ -2,6 +2,7 @@ from pathlib import Path
 
 import typer
 
+from reflecta.config import load_dotenv, require_api_keys
 from reflecta.loop import run_loop
 from reflecta.report import read_report, write_report
 
@@ -30,6 +31,12 @@ def run(
     max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
+    load_dotenv()
+    try:
+        require_api_keys()
+    except EnvironmentError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
     report = run_loop(path, max_iters=max_iters, max_repairs=max_repairs)
     report_path = path / "reflecta-report.json"
     write_report(report, report_path)
