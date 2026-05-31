@@ -8,23 +8,15 @@ import json
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 from reflecta.llm.gemini import generate_test_source
+from reflecta.models import CoverageTarget
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 SAMPLE_DIR = REPO_ROOT / "examples" / "sample_project"
 COVERAGE_JSON = SAMPLE_DIR / "coverage.json"
 OUT_DIR = SAMPLE_DIR / "tests" / "_reflecta"
-
-
-# Minimal stand-in — replaced by models.py in task 0.5
-@dataclass
-class CoverageTarget:
-    file_path: Path
-    qualified_name: str
-    missing_lines: list[int]
 
 
 def _load_dotenv(repo_root: Path) -> None:
