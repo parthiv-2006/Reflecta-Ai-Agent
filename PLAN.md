@@ -24,7 +24,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
 
 ## Phase 5 — Vertical slices
 
-- [ ] **1. Real coverage-gap extraction.**
+- [x] **1. Real coverage-gap extraction.**
   - Does: `extract_targets(coverage_json, repo_path)` parses `missing_lines` per file into `CoverageTarget` objects, mapping line ranges back to enclosing function/method names via the source AST.
   - Files: `src/reflecta/coverage_report.py`, `tests/test_coverage_report.py`.
   - Verify (test-first): feed a saved sample `coverage.json` + source, assert the targets and their `qualified_name`s come out right.
