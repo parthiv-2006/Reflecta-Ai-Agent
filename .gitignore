@@ -5,6 +5,9 @@ __pycache__/
 coverage.json
 .reflecta/
 .pytest_cache/
+# Generated tests and run output are artifacts, never committed.
+tests/_reflecta/test_reflecta_*.py
+reflecta-report.json
 *.egg-info/
 build/
 dist/

@@ -45,6 +45,7 @@ def run(
     ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
+    path = path.resolve()
     if verbose:
         logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
     load_dotenv()
@@ -71,11 +72,12 @@ def run(
 def clean(
     path: Path = typer.Option(..., help="Path to the repository to clean."),
 ) -> None:
-    """Remove all reflecta-generated test files (tests/_reflecta/*.py)."""
+    """Remove all reflecta-generated test files (tests/_reflecta/test_reflecta_*.py)."""
     reflecta_dir = path / "tests" / "_reflecta"
     removed = 0
     if reflecta_dir.exists():
-        for f in reflecta_dir.glob("*.py"):
+        # Only generated tests — never the package __init__.py or anything else.
+        for f in reflecta_dir.glob("test_reflecta_*.py"):
             f.unlink()
             removed += 1
 
