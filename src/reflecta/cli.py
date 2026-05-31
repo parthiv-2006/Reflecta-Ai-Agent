@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import typer
@@ -50,13 +51,20 @@ def clean(
 ) -> None:
     """Remove all reflecta-generated test files (tests/_reflecta/*.py)."""
     reflecta_dir = path / "tests" / "_reflecta"
-    if not reflecta_dir.exists():
+    removed = 0
+    if reflecta_dir.exists():
+        for f in reflecta_dir.glob("*.py"):
+            f.unlink()
+            removed += 1
+
+    # Also remove the reflecta-owned coverage workspace.
+    coverage_dir = path / ".reflecta"
+    if coverage_dir.exists():
+        shutil.rmtree(coverage_dir, ignore_errors=True)
+
+    if removed == 0 and not coverage_dir.exists():
         typer.echo("Nothing to clean.")
         return
-    removed = 0
-    for f in reflecta_dir.glob("*.py"):
-        f.unlink()
-        removed += 1
     typer.echo(f"Removed {removed} generated test file(s).")
 
 

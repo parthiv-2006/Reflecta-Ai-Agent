@@ -18,26 +18,50 @@ from reflecta.selection import select_next
 logger = logging.getLogger("reflecta")
 
 
+COVERAGE_DIR = ".reflecta"
+
+
+def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
+    """Reflecta-owned coverage data-file and json paths inside ``repo_path``.
+
+    Kept under ``.reflecta/`` so reflecta never clobbers the target repo's own
+    ``.coverage`` / ``coverage.json``. HARDENING-0-9 §3.1.
+    """
+    d = Path(repo_path) / COVERAGE_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d / ".coverage", d / "coverage.json"
+
+
 def measure_coverage(repo_path: Path) -> float:
-    """Run the full test suite under coverage and return percent_covered."""
+    """Run the full test suite under coverage and return percent_covered.
+
+    Coverage data and the json report are written to ``.reflecta/`` via an
+    explicit ``--data-file`` so the repo's own coverage artifacts are untouched.
+    """
     repo_path = Path(repo_path)
+    data_file, json_file = coverage_paths(repo_path)
     env = child_env()
     subprocess.run(
-        [sys.executable, "-m", "coverage", "run", "-m", "pytest", "--tb=no", "-q"],
+        [
+            sys.executable, "-m", "coverage", "run",
+            f"--data-file={data_file}", "-m", "pytest", "--tb=no", "-q",
+        ],
         cwd=repo_path,
         capture_output=True,
         env=env,
     )
     subprocess.run(
-        [sys.executable, "-m", "coverage", "json", "-o", "coverage.json"],
+        [
+            sys.executable, "-m", "coverage", "json",
+            f"--data-file={data_file}", "-o", str(json_file),
+        ],
         cwd=repo_path,
         capture_output=True,
         env=env,
     )
-    coverage_json_path = repo_path / "coverage.json"
-    if not coverage_json_path.exists():
+    if not json_file.exists():
         return 0.0
-    data = json.loads(coverage_json_path.read_text(encoding="utf-8"))
+    data = json.loads(json_file.read_text(encoding="utf-8"))
     return data.get("totals", {}).get("percent_covered", 0.0)
 
 
@@ -79,7 +103,7 @@ def run_loop(
 
     coverage_before = measure_coverage(repo_path)
 
-    coverage_json_path = repo_path / "coverage.json"
+    _, coverage_json_path = coverage_paths(repo_path)
     if coverage_json_path.exists():
         coverage_json = json.loads(coverage_json_path.read_text(encoding="utf-8"))
     else:
