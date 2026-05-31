@@ -1,10 +1,8 @@
 """Task 8a — happy-path loop tests (all mocked, no real LLM or subprocess)."""
 
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from reflecta.models import (
     CoverageTarget,
@@ -40,8 +38,6 @@ def test_happy_path_two_targets_both_kept(tmp_path):
     from reflecta.loop import run_loop
 
     targets = [_target("func_a"), _target("func_b")]
-
-    gen_calls = iter(targets)
 
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _gen_test(target, tmp_path)

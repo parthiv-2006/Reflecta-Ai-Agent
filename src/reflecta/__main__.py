@@ -1,10 +1,9 @@
-from reflecta import __version__
+from reflecta.cli import app
 
 
-def main() -> int:
-    print(f"reflecta {__version__}")
-    return 0
+def main() -> None:
+    app()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

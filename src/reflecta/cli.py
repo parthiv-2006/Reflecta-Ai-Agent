@@ -1,0 +1,68 @@
+from pathlib import Path
+
+import typer
+
+from reflecta.loop import run_loop
+from reflecta.report import read_report, write_report
+
+app = typer.Typer(help="reflecta — auto-generate coverage-raising pytest tests.")
+
+
+def _print_summary(report) -> None:
+    delta = report.coverage_after - report.coverage_before
+    sign = "+" if delta >= 0 else ""
+    typer.echo(
+        f"Coverage: {report.coverage_before:.1f}% → {report.coverage_after:.1f}%"
+        f"  ({sign}{delta:.1f} pp)"
+    )
+    typer.echo(
+        f"Tests kept: {report.tests_kept}"
+        f" | discarded: {report.tests_discarded}"
+        f" | repairs: {report.repair_attempts_used}"
+    )
+    typer.echo(f"Stop reason: {report.stop_reason}")
+
+
+@app.command()
+def run(
+    path: Path = typer.Option(..., help="Path to the repository to analyse."),
+    max_iters: int = typer.Option(10, help="Maximum targets to attempt per run."),
+    max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
+) -> None:
+    """Generate coverage-raising tests for the repository at PATH."""
+    report = run_loop(path, max_iters=max_iters, max_repairs=max_repairs)
+    report_path = path / "reflecta-report.json"
+    write_report(report, report_path)
+    _print_summary(report)
+    typer.echo(f"Report written to {report_path}")
+
+
+@app.command()
+def clean(
+    path: Path = typer.Option(..., help="Path to the repository to clean."),
+) -> None:
+    """Remove all reflecta-generated test files (tests/_reflecta/*.py)."""
+    reflecta_dir = path / "tests" / "_reflecta"
+    if not reflecta_dir.exists():
+        typer.echo("Nothing to clean.")
+        return
+    removed = 0
+    for f in reflecta_dir.glob("*.py"):
+        f.unlink()
+        removed += 1
+    typer.echo(f"Removed {removed} generated test file(s).")
+
+
+@app.command()
+def report(
+    path: Path = typer.Option(..., help="Path to the repository."),
+    last: bool = typer.Option(False, "--last", help="Print the last run report."),
+) -> None:
+    """Print the run report from the last reflecta run."""
+    report_path = path / "reflecta-report.json"
+    try:
+        r = read_report(report_path)
+    except FileNotFoundError:
+        typer.echo(f"No report found at {report_path}", err=True)
+        raise typer.Exit(code=1)
+    _print_summary(r)
