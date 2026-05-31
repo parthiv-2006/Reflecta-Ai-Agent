@@ -1,8 +1,8 @@
-# SPEC.md — coverloop
+# SPEC.md — reflecta
 
 ## Problem statement
 
-Developers under-test their own code because writing tests is tedious and it is hard to see exactly what is untested. coverloop points at a Python repository, finds the precise lines and branches that no test exercises, writes targeted tests for them using free LLM tiers, runs those tests, repairs the ones that fail, keeps only the ones that actually raise coverage, and repeats until a coverage target is hit or a budget is spent. The output is real new tests in the repo plus a report of what changed.
+Developers under-test their own code because writing tests is tedious and it is hard to see exactly what is untested. reflecta points at a Python repository, finds the precise lines and branches that no test exercises, writes targeted tests for them using free LLM tiers, runs those tests, repairs the ones that fail, keeps only the ones that actually raise coverage, and repeats until a coverage target is hit or a budget is spent. The output is real new tests in the repo plus a report of what changed.
 
 ## v1 scope (the core loop only)
 
@@ -57,15 +57,15 @@ Developers under-test their own code because writing tests is tedious and it is 
 ### CLI
 
 ```
-coverloop run --path ./src \
+reflecta run --path ./src \
               --target-coverage 80 \
               --max-iters 25 \
               --max-repairs 2 \
               --models gemini-flash,groq-8b \
               [--dry-run]
 
-coverloop clean --path ./        # remove coverloop's own generated tests
-coverloop report --last          # reprint the most recent run report
+reflecta clean --path ./        # remove reflecta's own generated tests
+reflecta report --last          # reprint the most recent run report
 ```
 
 ### Core function signatures (named, not final)
@@ -91,7 +91,7 @@ def passes_delta_gate(before: float, after: float) -> bool: ... # coverage stric
 // from `coverage json`
 {
   "files": {
-    "src/coverloop/foo.py": {
+    "src/reflecta/foo.py": {
       "summary": { "percent_covered": 64.0 },
       "missing_lines": [12, 13, 14, 22],
       "missing_branches": [[20, 21]]
@@ -101,7 +101,7 @@ def passes_delta_gate(before: float, after: float) -> bool: ... # coverage stric
 }
 ```
 
-## The two gates (what keeps coverloop honest)
+## The two gates (what keeps reflecta honest)
 
 1. **Assertion gate.** Parse the generated test's AST. Reject before running if it has zero `assert` statements, or if every assertion is trivially true (e.g. `assert True`, `assert 1 == 1`, asserting a literal against itself).
 2. **Coverage-delta gate.** After a test passes, re-measure total coverage. Keep the test only if coverage strictly increased. A passing test that does not move coverage is discarded as worthless. This is what prevents coverage theater.
@@ -113,6 +113,6 @@ Stop when any of: target coverage reached; `max-iters` hit; coverage stalled acr
 ## Open questions resolved here
 
 - *What if no existing tests exist?* Run coverage on import of the package (everything is a gap), start from zero. Supported.
-- *Where do generated tests live?* `tests/_coverloop/test_coverloop_<module>_<n>.py`. Never anywhere else, never overwriting.
+- *Where do generated tests live?* `tests/_reflecta/test_reflecta_<module>_<n>.py`. Never anywhere else, never overwriting.
 - *What if two targets need the same test file name?* Monotonic counter per module; names never collide and never reuse.
 - *Is line coverage enough?* For v1, yes. Branch and mutation testing are v2.

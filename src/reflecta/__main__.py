@@ -1,8 +1,8 @@
-from coverloop import __version__
+from reflecta import __version__
 
 
 def main() -> int:
-    print(f"coverloop {__version__}")
+    print(f"reflecta {__version__}")
     return 0
 
 
