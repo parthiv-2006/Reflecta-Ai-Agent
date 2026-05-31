@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coverloop"
+version = "0.0.0"
+description = "Find untested Python code, generate targeted pytest tests via free LLM tiers, and keep only tests that raise coverage."
+requires-python = ">=3.11"
+dependencies = [
+    "typer",
+    "google-genai",
+    "groq",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "coverage",
+    "ruff",
+]
+
+[project.scripts]
+coverloop = "coverloop.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.coverage.run]
+source = ["src/coverloop"]
