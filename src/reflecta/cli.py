@@ -1,3 +1,4 @@
+import logging
 import shutil
 from pathlib import Path
 
@@ -30,8 +31,15 @@ def run(
     path: Path = typer.Option(..., help="Path to the repository to analyse."),
     max_iters: int = typer.Option(10, help="Maximum targets to attempt per run."),
     max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Log per-target decisions to stderr."
+    ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
+    if verbose:
+        logging.basicConfig(
+            level=logging.INFO, format="%(message)s", force=True
+        )
     load_dotenv()
     try:
         require_api_keys()

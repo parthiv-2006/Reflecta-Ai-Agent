@@ -138,6 +138,12 @@ def run_loop(
             break
 
         target.status = TargetStatus.GENERATING
+        logger.info(
+            "target %s (missing=%d, priority=%.1f)",
+            target.qualified_name,
+            len(target.missing_lines),
+            target.priority,
+        )
 
         source = target.file_path.read_text(encoding="utf-8") if target.file_path.exists() else ""
         existing_tests = collect_existing_tests(repo_path, target.file_path.stem)
@@ -158,6 +164,7 @@ def run_loop(
                 report.tests_discarded += 1
                 iter_count += 1
                 stall += 1
+                logger.info("  discarded: failed assertion gate")
                 continue
 
             result = run_test(test.test_file_path, repo_path)
@@ -185,9 +192,11 @@ def run_loop(
                     target.status = TargetStatus.FAILED
                     iter_count += 1
                     stall += 1
+                    logger.info("  failed: repair exhausted after %d attempt(s)", len(attempts))
                     continue
 
                 # repair succeeded — treat repaired test as the passing test
+                logger.info("  repaired after %d attempt(s)", len(attempts))
                 test = repaired
 
             coverage_after = measure_coverage(repo_path)
@@ -195,10 +204,17 @@ def run_loop(
                 test, coverage_before=coverage_before, coverage_after=coverage_after
             )
             if outcome == "kept":
+                logger.info(
+                    "  kept %s (coverage %.2f -> %.2f)",
+                    test.test_file_path.name,
+                    coverage_before,
+                    coverage_after,
+                )
                 coverage_before = coverage_after
                 report.tests_kept += 1
                 stall = 0
             else:
+                logger.info("  discarded: coverage did not rise (%.2f)", coverage_after)
                 report.tests_discarded += 1
                 stall += 1
         except BudgetExhausted:
@@ -221,4 +237,13 @@ def run_loop(
         report.stop_reason = "exhausted"
 
     report.coverage_after = coverage_before
+    logger.info(
+        "done: %s | kept=%d discarded=%d repairs=%d | coverage %.2f -> %.2f",
+        report.stop_reason,
+        report.tests_kept,
+        report.tests_discarded,
+        report.repair_attempts_used,
+        report.coverage_before,
+        report.coverage_after,
+    )
     return report
