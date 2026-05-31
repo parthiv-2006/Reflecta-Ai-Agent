@@ -26,5 +26,9 @@ reflecta = "reflecta.__main__:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
+
 [tool.coverage.run]
 source = ["src/reflecta"]
