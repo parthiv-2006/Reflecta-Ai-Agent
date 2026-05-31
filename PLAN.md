@@ -42,7 +42,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify (test-first): mock HTTP 429 three times then success → retries with backoff, returns response. Mock 429 beyond max-retries → raises `BudgetExhausted`. Mock 200 → returns immediately, no delay.
   - Commit: `"feat: LLM provider wrapper with exponential backoff"`.
 
-- [ ] **3. Gemini generation with a real prompt.**
+- [x] **3. Gemini generation with a real prompt.**
   - Does: `generate_test(target, source, existing_tests)` builds a prompt with the full source module, existing tests, and the exact missed lines, calls Gemini Flash via the provider wrapper, extracts a clean pytest file, writes it to the `_reflecta` path. The per-module counter is determined at write time by scanning existing `_reflecta/test_reflecta_<module>_*.py` files — no manifest needed, no collisions across runs.
   - Files: `src/reflecta/generate.py`, `src/reflecta/llm/gemini.py`, `src/reflecta/prompts.py`, `tests/test_generate.py`.
   - Prompt iteration note: the first prompt will likely produce syntactically invalid output or wrong imports on some inputs. The verify step requires 3 distinct fixture inputs to all produce `ast.parse`-valid Python before this task is considered done. If fewer than 3 of 3 pass, iterate the prompt template.
