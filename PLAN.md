@@ -30,7 +30,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify (test-first): feed a saved sample `coverage.json` + source, assert the targets and their `qualified_name`s come out right.
   - Commit: `"feat: coverage-gap extraction with AST line mapping"`.
 
-- [ ] **2. Target selection and ranking.**
+- [x] **2. Target selection and ranking.**
   - Does: `select_next(targets)` ranks by a simple priority (more missing lines and simpler signatures first) and returns the next pending target.
   - Files: `src/reflecta/selection.py`, `tests/test_selection.py`.
   - Verify (test-first): given a target list, assert ordering; assert `None` when all are non-pending.
