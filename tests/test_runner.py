@@ -1,4 +1,24 @@
+import sys
+from unittest.mock import MagicMock, patch
+
 from reflecta.runner import run_test
+
+
+def test_runner_uses_sys_executable(tmp_path):
+    """Regression (HARDENING-0-9 §1.4): the runner must invoke the active
+    interpreter, not a bare 'python' that may resolve to a different env."""
+    test_file = tmp_path / "test_ok.py"
+    test_file.write_text("def test_ok():\n    assert True\n")
+
+    fake_proc = MagicMock()
+    fake_proc.communicate.return_value = ("", "")
+    fake_proc.returncode = 0
+
+    with patch("reflecta.runner.subprocess.Popen", return_value=fake_proc) as mock_popen:
+        run_test(test_file, tmp_path)
+
+    cmd = mock_popen.call_args.args[0]
+    assert cmd[0] == sys.executable
 
 
 def test_passing_test_returns_passed(tmp_path):

@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from reflecta.models import RunResult
 def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult:
     start = time.monotonic()
     proc = subprocess.Popen(
-        ["python", "-m", "pytest", str(test_file), "--tb=short", "-q"],
+        [sys.executable, "-m", "pytest", str(test_file), "--tb=short", "-q"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

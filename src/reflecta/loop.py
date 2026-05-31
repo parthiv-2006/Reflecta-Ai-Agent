@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -17,12 +18,12 @@ def measure_coverage(repo_path: Path) -> float:
     """Run the full test suite under coverage and return percent_covered."""
     repo_path = Path(repo_path)
     subprocess.run(
-        ["python", "-m", "coverage", "run", "-m", "pytest", "--tb=no", "-q"],
+        [sys.executable, "-m", "coverage", "run", "-m", "pytest", "--tb=no", "-q"],
         cwd=repo_path,
         capture_output=True,
     )
     subprocess.run(
-        ["python", "-m", "coverage", "json", "-o", "coverage.json"],
+        [sys.executable, "-m", "coverage", "json", "-o", "coverage.json"],
         cwd=repo_path,
         capture_output=True,
     )
