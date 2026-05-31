@@ -55,7 +55,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify (test-first): assertion-free test → rejected; `assert True` → rejected; `assert 1 == 1` → rejected; `assert add(2, 3) == 5` → accepted.
   - Commit: `"feat: AST-based assertion gate"`.
 
-- [ ] **5. Test execution and traceback capture.**
+- [x] **5. Test execution and traceback capture.**
   - Does: `run_test(test_file, repo_path, timeout_s)` runs only the new test in a subprocess, returns `RunResult{passed, traceback, duration}`. Per-test timeout.
   - Files: `src/reflecta/runner.py`, `tests/test_runner.py`.
   - Verify (test-first): a known-passing fixture test returns passed; a known-failing one returns the traceback; a hanging one is killed at the timeout.
