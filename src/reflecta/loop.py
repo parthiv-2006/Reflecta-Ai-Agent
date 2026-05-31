@@ -8,7 +8,7 @@ from pathlib import Path
 from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
-from reflecta.generate import generate_test
+from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.provider import BudgetExhausted
 from reflecta.models import GeneratedTest, RunReport, TargetStatus
 from reflecta.repair import repair_test
@@ -116,7 +116,7 @@ def run_loop(
         target.status = TargetStatus.GENERATING
 
         source = target.file_path.read_text(encoding="utf-8") if target.file_path.exists() else ""
-        existing_tests = ""
+        existing_tests = collect_existing_tests(repo_path, target.file_path.stem)
 
         try:
             test = generate_test(

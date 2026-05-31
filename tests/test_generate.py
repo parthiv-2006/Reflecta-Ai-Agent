@@ -72,6 +72,43 @@ def test_counter_increments(monkeypatch, tmp_path):
     assert expected.exists()
 
 
+def test_collect_existing_tests_includes_human_excludes_reflecta(tmp_path):
+    from reflecta.generate import collect_existing_tests
+
+    tests_dir = tmp_path / "tests"
+    (tests_dir).mkdir()
+    (tests_dir / "test_calc_partial.py").write_text("def test_human():\n    assert True\n")
+    reflecta_dir = tests_dir / "_reflecta"
+    reflecta_dir.mkdir()
+    (reflecta_dir / "test_reflecta_calc_0.py").write_text("# generated, must be excluded\n")
+    # unrelated module's tests are not pulled in
+    (tests_dir / "test_other.py").write_text("def test_other(): assert True\n")
+
+    result = collect_existing_tests(tmp_path, "calc")
+
+    assert "test_human" in result
+    assert "generated, must be excluded" not in result
+    assert "test_other" not in result
+
+
+def test_collect_existing_tests_caps_size(tmp_path):
+    from reflecta.generate import collect_existing_tests
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_calc_big.py").write_text("x = 1\n" * 5000)
+
+    result = collect_existing_tests(tmp_path, "calc", max_chars=100)
+
+    assert len(result) <= 100
+
+
+def test_collect_existing_tests_no_tests_dir(tmp_path):
+    from reflecta.generate import collect_existing_tests
+
+    assert collect_existing_tests(tmp_path, "calc") == ""
+
+
 def test_module_import_path_flat_module(tmp_path):
     from reflecta.generate import module_import_path
 

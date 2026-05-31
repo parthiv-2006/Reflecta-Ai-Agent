@@ -25,6 +25,30 @@ def module_import_path(file_path: Path, repo_path: Path) -> str:
     return ".".join(reversed(parts))
 
 
+def collect_existing_tests(repo_path: Path, module_name: str, max_chars: int = 4000) -> str:
+    """Return concatenated human test sources relevant to ``module_name``.
+
+    Feeds the generation prompt's "do NOT duplicate" context so Gemini stops
+    regenerating surface a human test already covers (which only wastes the
+    scarce LLM budget). Generated ``_reflecta`` tests are excluded, output is
+    size-capped to protect the context window. HARDENING-0-9 §2.3.
+    """
+    tests_root = Path(repo_path) / "tests"
+    if not tests_root.exists():
+        return ""
+    chunks: list[str] = []
+    for f in sorted(tests_root.rglob("test_*.py")):
+        if "_reflecta" in f.parts:
+            continue
+        if module_name not in f.name:
+            continue
+        try:
+            chunks.append(f.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+    return "\n\n".join(chunks)[:max_chars]
+
+
 def _next_counter(reflecta_dir: Path, module_name: str) -> int:
     if not reflecta_dir.exists():
         return 0
