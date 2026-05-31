@@ -67,7 +67,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify (test-first): mocked Groq that fixes on attempt 2 → kept; mocked Groq that never fixes → stops at the ceiling, target marked `failed`, no infinite loop.
   - Commit: `"feat: Groq repair loop with attempt ceiling"`.
 
-- [ ] **7. Coverage-delta gate.**
+- [x] **7. Coverage-delta gate.**
   - Does: `passes_delta_gate(before, after)`. Integrate it so a passing test is kept only if total coverage strictly rose; otherwise the generated file is deleted and the target marked `discarded`.
   - Files: `src/reflecta/gates.py`, `src/reflecta/loop.py` (stub), `tests/test_gates_delta.py`.
   - Verify (test-first): passing test that moves coverage → kept and file remains; passing test that does not → `discarded` and file removed.
