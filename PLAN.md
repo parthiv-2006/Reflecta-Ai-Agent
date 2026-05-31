@@ -73,19 +73,19 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify (test-first): passing test that moves coverage → kept and file remains; passing test that does not → `discarded` and file removed.
   - Commit: `"feat: coverage-delta gate with file cleanup on discard"`.
 
-- [ ] **8a. Happy-path loop.**
+- [x] **8a. Happy-path loop.**
   - Does: `loop.py` wires the happy path: extract → select → generate → assertion gate → run → delta gate → keep/discard → select next, until all targets are exhausted or `max-iters` is hit. No repair, no budget yet. Populates `RunReport` with kept/discarded counts and stop reason.
   - Files: `src/reflecta/loop.py`, `tests/test_loop_happy.py`.
   - Verify: run against the fixture with 2 targets, both succeed end to end. Report shows 2 kept, 0 discarded, coverage climbs from BEFORE to AFTER, `stop_reason` is set.
   - Commit: `"feat: happy-path loop with coverage climb on fixture"`.
 
-- [ ] **8b. Repair loop and budget.**
+- [x] **8b. Repair loop and budget.**
   - Does: extend `loop.py` to wire the repair path (on runner failure, call `repair_test` up to `--max-repairs`), and introduce `budget.py` — a tracker that stops the loop before exhausting the free-tier daily cap. Implements all stop conditions: target coverage reached, `max-iters` hit, coverage stalled across K consecutive targets, budget signalled.
   - Files: `src/reflecta/loop.py` (extended), `src/reflecta/budget.py`, `tests/test_loop_budget.py`.
   - Verify: (1) mocked repair that fixes on attempt 2 → target kept. (2) mocked repair that never fixes → loop continues to next target, failed target logged. (3) budget exhausted mid-loop → stops cleanly with `stop_reason="budget"`. (4) `max-iters=2` → stops after 2, not 3.
   - Commit: `"feat: repair loop and budget tracking in main loop"`.
 
-- [ ] **9. CLI and run report.**
+- [x] **9. CLI and run report.**
   - Does: `reflecta run/clean/report` via typer; writes `reflecta-report.json` and prints a readable summary (before/after, kept, discarded, repairs used, stop reason).
   - Files: `src/reflecta/cli.py`, `src/reflecta/report.py`, `tests/test_cli.py`.
   - Verify:
