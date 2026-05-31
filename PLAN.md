@@ -61,7 +61,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
   - Verify (test-first): a known-passing fixture test returns passed; a known-failing one returns the traceback; a hanging one is killed at the timeout.
   - Commit: `"feat: subprocess test runner with timeout and traceback capture"`.
 
-- [ ] **6. Groq repair loop with attempt ceiling.**
+- [x] **6. Groq repair loop with attempt ceiling.**
   - Does: on failure, `repair_test(test, result, source)` sends the failing test + traceback + source to Groq via the provider wrapper, gets a patched test, reruns. Repeats up to `--max-repairs` (the 2-failure rule). On exhaustion, marks target `failed` (v1) or `escalated` (v2 hook, no-op for now).
   - Files: `src/reflecta/repair.py`, `src/reflecta/llm/groq.py`, `tests/test_repair.py`.
   - Verify (test-first): mocked Groq that fixes on attempt 2 → kept; mocked Groq that never fixes → stops at the ceiling, target marked `failed`, no infinite loop.
