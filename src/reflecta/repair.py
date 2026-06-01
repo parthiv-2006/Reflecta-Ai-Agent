@@ -10,7 +10,7 @@ from reflecta.models import (
     TargetStatus,
 )
 from reflecta.prompts import build_repair_prompt
-from reflecta.runner import run_test
+from reflecta.runner import run_test_isolated
 
 
 def repair_test(
@@ -25,7 +25,7 @@ def repair_test(
     """groq_client may be the real groq module or a test double with .repair(prompt, model=).
 
     The repaired test is re-run with ``cwd=repo_path`` so import resolution matches
-    the environment the loop uses everywhere else (see HARDENING-0-9 §1.1).
+    the environment the loop uses everywhere else.
     """
     groq = groq_client if groq_client is not None else groq_module
     attempts: list[RepairAttempt] = []
@@ -38,7 +38,7 @@ def repair_test(
 
         test.test_file_path.write_text(patched_source)
 
-        run_result = run_test(test.test_file_path, repo_path)
+        run_result = run_test_isolated(test.test_file_path, repo_path)
 
         if run_result.passed:
             repaired = GeneratedTest(

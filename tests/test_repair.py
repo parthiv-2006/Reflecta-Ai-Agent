@@ -56,7 +56,7 @@ def test_repair_fixes_on_attempt_1(tmp_path):
     mock_groq = MagicMock()
     mock_groq.repair.return_value = fixed_source
 
-    with patch("reflecta.repair.run_test", return_value=_passing_result()):
+    with patch("reflecta.repair.run_test_isolated", return_value=_passing_result()):
         repaired, attempts = repair_test(
             test,
             failing,
@@ -90,7 +90,7 @@ def test_repair_fixes_on_attempt_2(tmp_path):
 
     run_results = [_failing_result("still wrong"), _passing_result()]
 
-    with patch("reflecta.repair.run_test", side_effect=run_results):
+    with patch("reflecta.repair.run_test_isolated", side_effect=run_results):
         repaired, attempts = repair_test(
             test,
             failing,
@@ -122,7 +122,7 @@ def test_repair_exhausts_ceiling(tmp_path):
     mock_groq.repair.return_value = bad_source
 
     with patch(
-        "reflecta.repair.run_test", return_value=_failing_result("still broken")
+        "reflecta.repair.run_test_isolated", return_value=_failing_result("still broken")
     ):
         repaired, attempts = repair_test(
             test,
@@ -157,7 +157,7 @@ def test_repair_uses_fast_model_first(tmp_path):
     mock_groq = MagicMock()
     mock_groq.repair.return_value = fixed_source
 
-    with patch("reflecta.repair.run_test", return_value=_passing_result()):
+    with patch("reflecta.repair.run_test_isolated", return_value=_passing_result()):
         repair_test(
             test,
             failing,
@@ -171,9 +171,33 @@ def test_repair_uses_fast_model_first(tmp_path):
     assert first_call_kwargs.kwargs.get("model") == MODEL_FAST
 
 
+def test_repair_uses_isolated_runner(tmp_path):
+    """repair_test must call run_test_isolated (not run_test) for isolation parity with loop.py."""
+    target = _make_target(tmp_path)
+    test = _make_test(tmp_path, target)
+    failing = _failing_result()
+
+    fixed_source = "from calc import add\ndef test_add():\n    assert add(1, 2) == 3\n"
+    mock_groq = MagicMock()
+    mock_groq.repair.return_value = fixed_source
+
+    with patch(
+        "reflecta.repair.run_test_isolated", return_value=_passing_result()
+    ) as mock_iso:
+        repair_test(
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
+        )
+
+    mock_iso.assert_called_once()
+
+
 def test_repair_runs_test_with_repo_path_cwd(tmp_path):
-    """Regression (HARDENING-0-9 §1.1): repaired tests must run with cwd=repo_path,
-    not the test file's parent directory."""
+    """Repaired tests must run with cwd=repo_path, not the test file's parent directory."""
     target = _make_target(tmp_path)
     # Place the generated test in tests/_reflecta/ so its parent differs from repo_path,
     # exactly as in a real run.
@@ -194,7 +218,7 @@ def test_repair_runs_test_with_repo_path_cwd(tmp_path):
     mock_groq = MagicMock()
     mock_groq.repair.return_value = fixed_source
 
-    with patch("reflecta.repair.run_test", return_value=_passing_result()) as mock_run:
+    with patch("reflecta.repair.run_test_isolated", return_value=_passing_result()) as mock_run:
         repair_test(
             test,
             failing,
