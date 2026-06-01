@@ -91,15 +91,22 @@ def clean(
             f.unlink()
             removed += 1
 
-    # Also remove the reflecta-owned coverage workspace.
+    # Also remove the reflecta-owned coverage workspace. Capture whether it
+    # existed *before* removing it — checking .exists() afterwards is always
+    # False and would misreport a workspace-only clean.
     coverage_dir = path / ".reflecta"
-    if coverage_dir.exists():
+    workspace_removed = coverage_dir.exists()
+    if workspace_removed:
         shutil.rmtree(coverage_dir, ignore_errors=True)
 
-    if removed == 0 and not coverage_dir.exists():
+    if removed == 0 and not workspace_removed:
         typer.echo("Nothing to clean.")
         return
-    typer.echo(f"Removed {removed} generated test file(s).")
+
+    parts = [f"Removed {removed} generated test file(s)."]
+    if workspace_removed:
+        parts.append("Removed .reflecta/ workspace.")
+    typer.echo(" ".join(parts))
 
 
 @app.command()
