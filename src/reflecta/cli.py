@@ -44,7 +44,9 @@ def run(
         False, "--verbose", "-v", help="Log per-target decisions to stderr."
     ),
     escalate: bool = typer.Option(
-        False, "--escalate", help="Escalate stuck targets to Claude Agent SDK after repair exhaustion."
+        False,
+        "--escalate",
+        help="Escalate stuck targets to Claude Agent SDK after repair exhaustion.",
     ),
     max_claude_iters: int = typer.Option(
         3, help="Maximum Claude tool-use iterations per escalated target."

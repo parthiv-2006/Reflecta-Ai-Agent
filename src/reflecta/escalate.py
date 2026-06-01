@@ -17,6 +17,7 @@ We call the Messages API directly over ``httpx`` rather than via the
    the Claude Code system prompt — which the SDK's ``x-api-key`` path can't do.
    ``_ClaudeClient`` auto-detects the token type and sets the right headers.
 """
+
 from __future__ import annotations
 
 import ast
@@ -59,7 +60,12 @@ def _serialize_block(block: object) -> dict:
     if kind == "text":
         return {"type": "text", "text": block.text}
     if kind == "tool_use":
-        return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+        return {
+            "type": "tool_use",
+            "id": block.id,
+            "name": block.name,
+            "input": block.input,
+        }
     raise ValueError(f"cannot serialize content block of type {kind!r}")
 
 
@@ -100,7 +106,9 @@ class _ClaudeClient:
     appropriate auth headers.
     """
 
-    def __init__(self, token: str | None = None, *, timeout: float = _ROUND_TRIP_TIMEOUT_S):
+    def __init__(
+        self, token: str | None = None, *, timeout: float = _ROUND_TRIP_TIMEOUT_S
+    ):
         token = token or os.environ.get("ANTHROPIC_API_KEY")
         if not token:
             raise EnvironmentError(
@@ -121,7 +129,9 @@ class _ClaudeClient:
         self._client = httpx.Client(timeout=httpx.Timeout(timeout), headers=headers)
         self.messages = self
 
-    def create(self, *, model, max_tokens, messages, tools=None, system=None) -> SimpleNamespace:
+    def create(
+        self, *, model, max_tokens, messages, tools=None, system=None
+    ) -> SimpleNamespace:
         body: dict = {
             "model": model,
             "max_tokens": max_tokens,
@@ -247,7 +257,12 @@ def escalate_target(
     messages: list[dict] = [{"role": "user", "content": initial_prompt}]
 
     for iteration in range(max_iters):
-        logger.debug("escalation iteration %d/%d for %s", iteration + 1, max_iters, test.target.qualified_name)
+        logger.debug(
+            "escalation iteration %d/%d for %s",
+            iteration + 1,
+            max_iters,
+            test.target.qualified_name,
+        )
 
         try:
             response = claude_client.messages.create(
@@ -257,7 +272,9 @@ def escalate_target(
                 messages=messages,
             )
         except Exception as exc:
-            logger.warning("escalation API call failed (iter %d): %s", iteration + 1, exc)
+            logger.warning(
+                "escalation API call failed (iter %d): %s", iteration + 1, exc
+            )
             break
 
         messages.append({"role": "assistant", "content": response.content})
@@ -277,7 +294,9 @@ def escalate_target(
         for block in response.content:
             if block.type != "tool_use":
                 continue
-            tool_output = _execute_tool(block.name, block.input, test=test, repo_path=repo_path)
+            tool_output = _execute_tool(
+                block.name, block.input, test=test, repo_path=repo_path
+            )
             tool_results.append(
                 {"type": "tool_result", "tool_use_id": block.id, "content": tool_output}
             )

@@ -1,9 +1,8 @@
 """Integration tests for Claude escalation wired into the main loop (TDD)."""
+
 from __future__ import annotations
 
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +12,7 @@ from reflecta.models import CoverageTarget, GeneratedTest, RunResult, TargetStat
 # ---------------------------------------------------------------------------
 # Minimal fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_target(tmp_path):
@@ -43,6 +43,7 @@ def _make_generated_test(tmp_path, target):
 # ---------------------------------------------------------------------------
 # Tests for loop escalation wiring
 # ---------------------------------------------------------------------------
+
 
 def test_loop_escalation_disabled_by_default_marks_failed(tmp_path, sample_target):
     """Without --escalate, a target that exhausts repairs is marked FAILED."""
@@ -124,21 +125,26 @@ def test_loop_escalation_success_keeps_test(tmp_path, sample_target):
 
 def test_loop_report_tracks_escalation_counts(tmp_path, sample_target):
     """RunReport.escalations_attempted and escalations_succeeded are populated."""
-    from reflecta.loop import run_loop
     from reflecta.models import RunReport
 
-    assert hasattr(RunReport(
-        repo_path=tmp_path,
-        started_at=__import__("datetime").datetime.now(),
-        coverage_before=0.0,
-        coverage_after=0.0,
-    ), "escalations_attempted")
-    assert hasattr(RunReport(
-        repo_path=tmp_path,
-        started_at=__import__("datetime").datetime.now(),
-        coverage_before=0.0,
-        coverage_after=0.0,
-    ), "escalations_succeeded")
+    assert hasattr(
+        RunReport(
+            repo_path=tmp_path,
+            started_at=__import__("datetime").datetime.now(),
+            coverage_before=0.0,
+            coverage_after=0.0,
+        ),
+        "escalations_attempted",
+    )
+    assert hasattr(
+        RunReport(
+            repo_path=tmp_path,
+            started_at=__import__("datetime").datetime.now(),
+            coverage_before=0.0,
+            coverage_after=0.0,
+        ),
+        "escalations_succeeded",
+    )
 
 
 def test_loop_escalation_failure_marks_escalated(tmp_path, sample_target):

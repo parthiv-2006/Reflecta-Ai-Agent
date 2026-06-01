@@ -275,7 +275,8 @@ def run_loop(
                         iter_count += 1
                         stall += 1
                         logger.info(
-                            "  failed: repair exhausted after %d attempt(s)", len(attempts)
+                            "  failed: repair exhausted after %d attempt(s)",
+                            len(attempts),
                         )
                         continue
 
