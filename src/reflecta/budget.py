@@ -1,7 +1,5 @@
 from dataclasses import dataclass, field
 
-from reflecta.llm.provider import BudgetExhausted
-
 
 @dataclass
 class BudgetTracker:
@@ -17,10 +15,3 @@ class BudgetTracker:
 
     def exhausted(self) -> bool:
         return self._used >= self.max_llm_calls
-
-    def check(self) -> None:
-        """Raise BudgetExhausted if the cap has been reached."""
-        if self.exhausted():
-            raise BudgetExhausted(
-                f"LLM call budget exhausted ({self._used}/{self.max_llm_calls})"
-            )

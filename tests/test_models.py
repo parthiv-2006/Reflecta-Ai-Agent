@@ -29,7 +29,6 @@ def test_coverage_target_status_values():
     assert statuses == {
         "pending",
         "generating",
-        "repairing",
         "kept",
         "discarded",
         "escalated",

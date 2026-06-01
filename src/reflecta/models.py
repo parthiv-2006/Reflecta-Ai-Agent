@@ -7,7 +7,6 @@ from pathlib import Path
 class TargetStatus(enum.Enum):
     PENDING = "pending"
     GENERATING = "generating"
-    REPAIRING = "repairing"
     KEPT = "kept"
     DISCARDED = "discarded"
     ESCALATED = "escalated"
