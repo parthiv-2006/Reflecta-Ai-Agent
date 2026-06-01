@@ -1,7 +1,6 @@
 """Tests for the Claude Agent SDK escalation module (TDD — written before implementation)."""
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -247,25 +246,27 @@ def test_escalate_write_test_updates_file_on_disk(tmp_repo, failing_test, failin
     assert failing_test.test_file_path.read_text() == new_content
 
 
-def test_escalate_raises_import_error_without_anthropic(
-    tmp_repo, failing_test, failing_result
+def test_escalate_raises_clear_error_without_api_key(
+    tmp_repo, failing_test, failing_result, monkeypatch
 ):
-    """If anthropic is not installed and no client provided, raises ImportError."""
+    """No client provided and ANTHROPIC_API_KEY unset → clear EnvironmentError."""
     from reflecta.escalate import escalate_target
 
-    with patch.dict("sys.modules", {"anthropic": None}):
-        with pytest.raises(ImportError, match="anthropic"):
-            escalate_target(
-                failing_test, failing_result, "source",
-                repo_path=tmp_repo, claude_client=None,
-            )
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
+        escalate_target(
+            failing_test, failing_result, "source",
+            repo_path=tmp_repo, claude_client=None,
+        )
 
 
 @pytest.mark.live
 def test_escalate_live_repairs_simple_failing_test(tmp_repo):
     """Real Claude call: fix a test that asserts wrong value.
 
-    Requires ANTHROPIC_API_KEY in environment. Run with:
+    Exercises the production path — the built-in httpx ``_ClaudeClient`` (no
+    injected client), which handles both OAuth subscription tokens and console
+    API keys. Requires ANTHROPIC_API_KEY in environment. Run with:
         pytest -m live tests/test_escalate.py::test_escalate_live_repairs_simple_failing_test
     """
     import os
@@ -274,8 +275,6 @@ def test_escalate_live_repairs_simple_failing_test(tmp_repo):
     load_dotenv()
     if not os.environ.get("ANTHROPIC_API_KEY"):
         pytest.skip("ANTHROPIC_API_KEY not set")
-
-    import anthropic
 
     from reflecta.escalate import escalate_target
 
@@ -304,31 +303,10 @@ def test_escalate_live_repairs_simple_failing_test(tmp_repo):
         duration=0.1,
     )
 
-    import anthropic as _anthropic
-
-    class _TracingClient:
-        """Thin wrapper that prints before/after each API call.
-
-        max_retries=0 prevents the SDK from silently retrying on timeout,
-        which would multiply the wait time set by _timed_create in escalate.py.
-        timeout=50.0 is the best-effort socket-level deadline; the hard cap is
-        enforced by the concurrent.futures wrapper inside _timed_create.
-        """
-
-        def __init__(self):
-            self._inner = _anthropic.Anthropic(timeout=50.0, max_retries=0)
-            self.messages = self
-
-        def create(self, **kwargs):
-            print("\n[live] → sending request to Claude API...", flush=True)
-            resp = self._inner.messages.create(**kwargs)
-            print(f"[live] ← got response: stop_reason={resp.stop_reason}", flush=True)
-            return resp
-
+    # claude_client=None → production httpx client built from ANTHROPIC_API_KEY.
     repaired = escalate_target(
         test, result, src.read_text(),
         repo_path=tmp_repo, max_iters=3,
-        claude_client=_TracingClient(),
     )
 
     assert repaired is not None, "Claude should have fixed the wrong expected value"
