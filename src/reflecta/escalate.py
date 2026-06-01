@@ -201,7 +201,9 @@ def _execute_tool(
     if name == "read_file":
         rel = input_.get("path", "")
         target = (repo_path / rel).resolve()
-        if not str(target).startswith(str(repo_path.resolve())):
+        # Path containment, not string prefix: a string check lets a sibling
+        # directory such as ``/repo-secrets`` pass the guard for repo ``/repo``.
+        if not target.is_relative_to(repo_path.resolve()):
             return "Error: path is outside the repository root"
         if not target.exists():
             return f"Error: file not found: {rel}"

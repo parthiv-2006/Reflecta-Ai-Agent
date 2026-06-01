@@ -222,6 +222,29 @@ def test_escalate_read_file_within_repo(tmp_repo, failing_test, failing_result):
     assert "def add" in captured[0]
 
 
+def test_execute_tool_read_file_blocks_sibling_prefix(tmp_path, failing_test):
+    """AUDIT C2: a sibling dir whose name is a string prefix of the repo (e.g.
+    ``repo-secrets`` vs ``repo``) must be blocked. The old ``startswith`` check
+    let this through; ``is_relative_to`` does not."""
+    from reflecta.escalate import _execute_tool
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sibling = tmp_path / "repo-secrets"
+    sibling.mkdir()
+    (sibling / "secret.txt").write_text("TOP SECRET")
+
+    out = _execute_tool(
+        "read_file",
+        {"path": "../repo-secrets/secret.txt"},
+        test=failing_test,
+        repo_path=repo,
+    )
+
+    assert "Error: path is outside the repository root" in out
+    assert "TOP SECRET" not in out
+
+
 def test_escalate_read_file_outside_repo_is_blocked(
     tmp_repo, failing_test, failing_result
 ):
