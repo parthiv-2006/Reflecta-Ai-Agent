@@ -105,9 +105,19 @@ def clean(
 @app.command()
 def report(
     path: Path = typer.Option(..., help="Path to the repository."),
-    last: bool = typer.Option(False, "--last", help="Print the last run report."),
+    last: bool = typer.Option(
+        False, "--last", help="Reprint the most recent run report (see SPEC)."
+    ),
 ) -> None:
-    """Print the run report from the last reflecta run."""
+    """Print the run report from the last reflecta run.
+
+    Pass ``--last`` to reprint the most recent report. Without it we show a
+    hint rather than guessing, so the flag drives real behaviour instead of
+    being decorative.
+    """
+    if not last:
+        typer.echo("Pass --last to reprint the most recent run report.")
+        return
     report_path = path / "reflecta-report.json"
     try:
         r = read_report(report_path)
