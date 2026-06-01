@@ -1,9 +1,8 @@
-"""Environment / secrets loading. HARDENING-0-9 §2.2.
+"""Environment / secrets loading.
 
-Keys live in ``.env`` (gitignored) per CLAUDE.md hard rule 5. Nothing else in
-the package loaded it, so a user who followed the README got a raw KeyError
-from deep in an SDK constructor. ``load_dotenv`` + ``require_api_keys`` turn
-that into an actionable message that names the missing variable.
+Keys live in ``.env`` (gitignored). ``load_dotenv`` + ``require_api_keys``
+turn a missing key into an actionable message that names the missing variable
+rather than a raw KeyError from deep in an SDK constructor.
 """
 
 import os

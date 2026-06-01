@@ -15,7 +15,6 @@ def child_env() -> dict[str, str]:
     Strips every ``*_API_KEY`` so a generated (or prompt-injected) test cannot
     read the provider secrets that live in the parent process. The interpreter
     still needs PATH/SYSTEMROOT/PYTHONPATH, so we copy everything else.
-    HARDENING-0-9 §1.2.
     """
     return {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
 

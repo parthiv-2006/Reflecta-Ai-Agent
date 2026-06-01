@@ -4,7 +4,7 @@ import time
 def strip_fences(text: str) -> str:
     """Remove a leading ```lang fence and trailing ``` from an LLM response.
 
-    Shared by the Gemini and Groq clients (HARDENING-0-9 §4.3).
+    Shared by the Gemini and Groq clients.
     """
     text = text.strip()
     if text.startswith("```"):

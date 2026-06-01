@@ -1,13 +1,11 @@
 """
-coverage_report.py — Task 1.
-
-extract_targets parses a coverage.json dict and maps missing lines back to
+coverage_report.py — parses coverage.json and maps missing lines back to
 the enclosing function or method via the source AST.
 
-Qualified-name conventions (v1):
+Qualified-name conventions:
   - Top-level function  → "func_name"
   - Method in a class   → "ClassName.method_name"
-  - Nested / closures   → treated as top-level (out of scope for v1)
+  - Nested / closures   → treated as top-level
 """
 
 import ast

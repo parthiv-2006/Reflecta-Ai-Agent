@@ -26,7 +26,7 @@ def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
     """Reflecta-owned coverage data-file and json paths inside ``repo_path``.
 
     Kept under ``.reflecta/`` so reflecta never clobbers the target repo's own
-    ``.coverage`` / ``coverage.json``. HARDENING-0-9 §3.1.
+    ``.coverage`` / ``coverage.json``.
     """
     d = Path(repo_path).resolve() / COVERAGE_DIR
     d.mkdir(parents=True, exist_ok=True)
@@ -111,7 +111,7 @@ def run_loop(
     extract → select → generate → assertion gate → run → [repair] → delta gate
     → keep/discard. Repeats until one of the four SPEC stop conditions fires:
     target coverage reached, max_iters hit, coverage stalled across ``stall_k``
-    consecutive targets, or the LLM budget is depleted. HARDENING-0-9 §2.1.
+    consecutive targets, or the LLM budget is depleted.
     """
     repo_path = Path(repo_path).resolve()
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
@@ -193,7 +193,7 @@ def run_loop(
             except SyntaxError:
                 # Invalid Python from the LLM — treat as a run failure so the
                 # repair path gets a chance to fix it rather than silently
-                # discarding the target. TASK-10 §8.
+                # discarding the target.
                 result = RunResult(
                     passed=False,
                     traceback="SyntaxError: generated code is not valid Python",
@@ -228,9 +228,9 @@ def run_loop(
                         groq_client=groq_client,
                     )
                 except BudgetExhausted:
-                    # Repair provider (Groq) hit its daily cap. Mark this target
-                    # failed and continue — only a generation-side BudgetExhausted
-                    # stops the entire loop. TASK-11.
+                    # Repair provider hit its daily cap — mark this target failed
+                    # and continue. Only a generation-side BudgetExhausted stops
+                    # the entire loop.
                     logger.warning(
                         "repair provider exhausted on %s; skipping target",
                         target.qualified_name,
@@ -275,8 +275,8 @@ def run_loop(
                 report.tests_discarded += 1
                 stall += 1
         except BudgetExhausted:
-            # Provider signalled the free tier is exhausted (429 ceiling). Stop
-            # cleanly so the report is still written. HARDENING-0-9 §1.5.
+            # Free tier is exhausted (429 ceiling). Stop cleanly so the report
+            # is still written.
             logger.warning(
                 "provider budget exhausted on target %s", target.qualified_name
             )
@@ -284,7 +284,7 @@ def run_loop(
             report.stop_reason = "budget"
             break
         except Exception:
-            # One bad target must not abort the whole run. HARDENING-0-9 §1.6.
+            # One bad target must not abort the whole run.
             logger.exception("target %s failed unexpectedly", target.qualified_name)
             target.status = TargetStatus.FAILED
             iter_count += 1

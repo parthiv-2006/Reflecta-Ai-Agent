@@ -14,7 +14,7 @@ def module_import_path(file_path: Path, repo_path: Path) -> str:
     contain ``__init__.py``), stopping at the first non-package ancestor or at
     ``repo_path``. This handles flat modules (``calc``), packaged modules
     (``pkg.sub.mod``), and src-layout (``reflecta.cli`` for ``src/reflecta/cli.py``)
-    without hardcoding the bare stem. HARDENING-0-9 §1.3.
+    without hardcoding the bare stem.
     """
     file_path = Path(file_path).resolve()
     repo_path = Path(repo_path).resolve()
@@ -38,7 +38,7 @@ def collect_existing_tests(
     Feeds the generation prompt's "do NOT duplicate" context so Gemini stops
     regenerating surface a human test already covers (which only wastes the
     scarce LLM budget). Generated ``_reflecta`` tests are excluded, output is
-    size-capped to protect the context window. HARDENING-0-9 §2.3.
+    size-capped to protect the context window.
     """
     tests_root = Path(repo_path) / "tests"
     if not tests_root.exists():
