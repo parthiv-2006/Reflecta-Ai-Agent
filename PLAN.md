@@ -141,7 +141,7 @@ and the gate stress test (14) remain open below.
 - [x] **17. Package:** clean `pyproject.toml`, publish to PyPI or pipx-from-GitHub. Publish command stays behind manual confirmation.
 - [x] **18. Clean-clone smoke test** with only the two free keys set.
 - [ ] **19. Real-repo demo:** run on 2-3 of your own repos (LeaseGuard is a candidate), capture real before/after numbers for the README.
-- [ ] **20. Tag `v0.1.0`.**
+- [x] **20. Tag `v0.1.0`.**
 
 ---
 
