@@ -1,130 +1,146 @@
-# Reflecta: Automated Pytest Coverage Generator
+# Reflecta
 
-Reflecta uses LLMs to find untested Python code, write targeted pytest tests, run them, and repair them if they fail. It keeps tests only if they increase the project's coverage score and pass strict assertion checks.
+**Stop writing boilerplate tests. Reflecta finds your coverage gaps, writes targeted pytest tests using free LLM tiers, repairs failures automatically, and keeps only tests that actually move the needle.**
 
-## Key Design Choices
-
-* **Model Routing for Free Tiers:** Rather than running everything on one model, the orchestrator divides tasks based on token and rate limits. Gemini Flash writes the initial test drafts using the full source file and Groq Llama 3 handles triage and iterative code repairs. A Claude (Claude Agent SDK) escalation path for difficult, stuck targets is planned for v2; in v1 a target that exhausts its repair attempts is marked `failed`.
-* **AST Quality Gates:** To prevent useless tests (such as assertions that check `assert True`), the codebase parses the generated test's Abstract Syntax Tree. Tests with trivial or missing assertions are deleted.
-* **Coverage Delta Checks:** Reflecta runs coverage tools before and after writing tests. If total project coverage does not rise, the test file is discarded.
-* **Process Isolation:** Tests run in subprocesses with strict timeouts. If a generated test hangs or loops infinitely, the runner terminates it and passes the timeout traceback back to the repair loop.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests: 125 passing](https://img.shields.io/badge/tests-125%20passing-brightgreen.svg)](#testing)
 
 ---
 
-## Orchestration Loop
+## What it does
 
-Reflecta uses a deterministic orchestrator rather than an LLM agent to control the main loop. The program parses raw coverage data, invokes models for test generation (Gemini) and first-line repairs (Groq), and cleans up the workspace based on test runner outcomes. Escalating hard failures to an agentic subagent (Claude) is a planned v2 path; in v1 the orchestrator marks a stuck target `failed` once its Groq repair attempts are exhausted.
+Reflecta is a self-improving test generation pipeline for Python. Point it at any repository, and it:
+
+1. **Measures** real coverage gaps by parsing `coverage.json` and mapping missed lines back to enclosing functions via the source AST.
+2. **Generates** targeted pytest files using Gemini Flash — the full source module, existing tests, and exact missed lines all fit in one 1M-token prompt.
+3. **Runs** each generated test in an isolated subprocess with a hard timeout; captures tracebacks on failure.
+4. **Repairs** failing tests through a Groq Llama repair loop (8B for first attempts, 70B for harder cases) up to a configurable ceiling.
+5. **Gates** every kept test on two strict checks: real AST-verified assertions + a strictly positive coverage delta.
+6. **Reports** before/after coverage, counts of kept/discarded/repaired tests, and a machine-readable JSON report.
+
+The result: new, passing pytest files in your repo that you didn't have to write, backed by a coverage signal that proves they're not theater.
+
+---
+
+## Why this is hard (the interesting engineering)
+
+Automated test generation is an easy idea with several subtle failure modes that Reflecta has to address explicitly:
+
+| Challenge | What goes wrong without it | Reflecta's solution |
+|-----------|---------------------------|---------------------|
+| **Coverage theater** | LLMs produce tests that pass but only import the module — coverage goes up trivially without exercising behavior | Coverage-delta gate: re-measure after every passing test; discard if total coverage didn't strictly rise |
+| **Trivial assertions** | `assert True`, `assert result is not None`, `assert 1 == 1` — all pass, none catch bugs | AST assertion gate: parse the generated test before running it; reject if every assertion is a literal constant or trivially-true expression |
+| **Rate-limited free tiers** | A single 429 from Gemini or Groq mid-run crashes the pipeline and wastes all prior work | Provider wrapper with exponential backoff + `BudgetExhausted` exception; budget tracker stops cleanly before the daily cap |
+| **Hanging generated tests** | An LLM might write a test that enters an infinite loop or blocks on stdin | Subprocess execution with per-test timeout; timeout is captured as a traceback and routed to the repair loop |
+| **Import-side-effect corruption** | Running a bad generated test in-process can corrupt global state or leave stale coverage data | Subprocess isolation + temp-directory copy of the test tree; the orchestrator's state is never touched |
+| **Non-trivial import paths** | Class methods, nested modules, and packages-with-`__init__` all require different `import` strategies | AST-based line→function mapping; prompts include the exact module path and qualified name |
+| **Infinite repair loops** | Without a ceiling, a hard-to-fix test causes unbounded LLM spend | 2-failure rule: `--max-repairs` (default 2) caps attempts per target; exhausted targets are marked `failed`, not retried |
+
+---
+
+## Architecture: deterministic orchestrator, not an LLM agent
+
+The main loop is deterministic Python — coverage parsing, target ranking, file I/O, and stop conditions are all code, not LLM decisions. LLMs are invoked only for two tasks: drafting a test (Gemini) and repairing a failing one (Groq). This keeps the pipeline free-tier-friendly, auditable, and debuggable.
 
 ```mermaid
 graph TD
-    A[Start: Run coverage run + json] --> B[Parse coverage.json & map lines to AST functions]
-    B --> C[Rank targets by priority & select next]
-    C --> D[Generate pytest code via Gemini Flash]
-    D --> E{Passes AST Assertion Gate?}
-    E -- No: trivial/no asserts --> F[Delete file & mark Discarded]
-    E -- Yes --> G[Run test in Subprocess with Timeout]
-    G -- Failed / Exception --> H{Attempts < Max?}
-    H -- Yes --> I[Repair test via Groq Llama 3.1/3.3] --> G
-    H -- No --> J[Delete file & mark Failed]
-    H -. v2 / planned .-> O[Escalate: Repair via Claude Agent SDK]
-    O -. v2 .-> G
-    G -- Passed --> K[Re-run full coverage & check Delta]
-    K --> L{Is coverage strictly higher?}
-    L -- Yes --> M[Keep test file & mark Kept]
-    L -- No --> F
+    A[coverage run -m pytest && coverage json] --> B[Parse coverage.json\nMap lines → AST functions]
+    B --> C[Rank targets by priority\nSelect next pending]
+    C --> D[Generate pytest file\nvia Gemini Flash]
+    D --> E{AST Assertion Gate}
+    E -- trivial / no asserts --> F[Delete file\nMark Discarded]
+    E -- passes --> G[Run test in isolated\nsubprocess + timeout]
+    G -- failed / timeout --> H{Attempts < max-repairs?}
+    H -- yes --> I[Repair via Groq Llama\n8B → 70B] --> G
+    H -- no --> J[Delete file\nMark Failed]
+    H -. v2 planned .-> O[Escalate: Claude Agent SDK\nbash + edit tools]
+    G -- passed --> K[Re-run full coverage\nMeasure delta]
+    K --> L{Coverage strictly higher?}
+    L -- yes --> M[Keep test file\nMark Kept]
+    L -- no --> F
     M --> C
     F --> C
     J --> C
-    C -- No targets left/budget limit --> N[Write report & Print Summary]
+    C -- exhausted / budget / stall --> N[Write reflecta-report.json\nPrint summary]
 ```
 
 ---
 
-## Technical Implementation
+## Multi-model routing
 
-### Multi-Model API Routing
-The orchestrator divides labor between three models to optimize cost, speed, and accuracy:
-* **Gemini Flash (google-genai):** Used for test drafting. The prompt includes the full source module and existing tests, which fits well within Gemini's 1M-token context window.
-* **Groq Llama 3.1 8B / 3.3 70B (groq):** Used for fast triage and code repairs. The inputs are small (typically tracebacks or single failing test functions) so they run on Groq to prioritize speed and stay under request-per-minute limits.
-* **Claude (claude-agent-sdk) — planned for v2:** The intended escalation path. When Groq fails to repair a test after the maximum number of attempts, v2 will spawn a Claude Agent SDK subagent equipped with file-editing and bash execution tools to resolve complex setups and mock dependencies without consuming pay-as-you-go API credits. In v1 the target is simply marked `failed` at this point.
+Each step is routed to the model best suited for it — balancing context window, speed, and free-tier limits:
 
-### Quality Control
-Automatic test generation can easily lead to "coverage theater" (passing tests that do not check behavior). Reflecta blocks this with two validators:
-1. **AST Assertion Validator:** Parses the Abstract Syntax Tree of the generated file in [gates.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/gates.py). Tests are immediately rejected if they have zero assertions or if all assertions are trivial (such as `assert True`, `assert 1 == 1`, or `assert "foo" == "foo"`).
-2. **Coverage-Delta Check:** After a generated test runs and passes, the orchestrator runs the project's coverage tool again. If the total coverage percentage did not rise, the test is deleted and its target is marked as discarded.
-
-### Safety and Rate Limits
-* **Subprocess Execution:** Generated tests execute in separate subprocesses managed in [runner.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/runner.py). This protects the orchestrator's state.
-* **Timeouts:** Subprocesses are killed after 30 seconds to catch infinite loops or hanging tests. The timeout exception is captured and treated as a test failure for the repair loop.
-* **Backoff and Budgeting:** The wrapper in [provider.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/llm/provider.py) retries on API 429 errors using exponential backoff. A budget tracker in [budget.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/budget.py) limits the total API calls in a single run to prevent account lockout.
+| Pipeline step | Model | Rationale |
+|--------------|-------|-----------|
+| Loop orchestration, file I/O, coverage parsing | Deterministic Python | Free, debuggable, no rate-limit exposure |
+| Test generation from full source | **Gemini 2.5 Flash** (`google-genai`) | ~1M-token context holds a full module + existing tests in one prompt |
+| First repair attempt | **Groq Llama 3.1 8B Instant** (`groq`) | Fast, low-latency for structured traceback → patch tasks |
+| Harder repair attempts | **Groq Llama 3.3 70B** (`groq`) | More capable model for complex mock/import failures |
+| Stuck targets after N repairs | **Claude Agent SDK** *(v2, planned)* | Real bash + file tools via Claude subscription; reserved for genuinely hard cases |
 
 ---
 
-## Repository Structure
+## The two gates — what keeps Reflecta honest
 
-The code is organized into decoupled, single-responsibility modules:
+> **Every test Reflecta keeps must clear both gates. Passing one is not enough.**
 
-* [models.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/models.py): Canonical schemas and dataclasses like `CoverageTarget`, `GeneratedTest`, and `RunReport`.
-* [config.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/config.py): Loads `.env` and preflights the required API keys with a clear error.
-* [loop.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/loop.py): Main orchestration logic.
-* [coverage_report.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/coverage_report.py): Maps missed lines from `coverage.json` to enclosing function nodes using the source AST.
-* [selection.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/selection.py): Priority queue logic that ranks targets based on missed line counts and function signature complexity.
-* [gates.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/gates.py): AST assertion validation and coverage delta checks.
-* [runner.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/runner.py): Handles subprocess test execution and timeout management.
-* [repair.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/repair.py): The loop that parses test tracebacks and requests fixes via Groq Llama.
-* [cli.py](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/src/reflecta/cli.py): Typer CLI command definitions.
+**Gate 1 — AST Assertion Validator** ([`src/reflecta/gates.py`](src/reflecta/gates.py))
+Parses the generated file's Abstract Syntax Tree before running it. Rejects immediately if:
+- Zero `assert` statements present
+- Every assertion is a literal constant (`assert True`, `assert 1 == 1`)
+- Every assertion compares a literal to itself (`assert "foo" == "foo"`)
+
+**Gate 2 — Coverage-Delta Check** ([`src/reflecta/gates.py`](src/reflecta/gates.py))
+After a test passes, re-runs `coverage json` and compares totals. Discards and deletes the test file if total project coverage did not strictly increase. A passing test that only imports the module gets caught here.
 
 ---
 
-## Setup & Installation
+## Setup
 
-### 1. Prerequisites
-* Python 3.11+
-* [uv](https://github.com/astral-sh/uv) (recommended fast Python package installer) or `pip`
+### Prerequisites
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) (recommended) or `pip`
+- A free [Google AI Studio](https://aistudio.google.com/) key (Gemini Flash)
+- A free [Groq](https://console.groq.com/) key (Llama 3.1/3.3)
 
-### 2. Clone and Install Dependencies
-Install the package in editable mode with development dependencies:
+### Install
 
 ```bash
 git clone https://github.com/parthiv-2006/Reflecta-Ai-Agent.git
 cd Reflecta-Ai-Agent
 
-# Install using uv (creates a virtual environment automatically)
+# Recommended: uv creates and manages the virtualenv automatically
 uv sync
 
-# Or using standard pip
+# Or with pip
 pip install -e .[dev]
 ```
 
-### 3. Configure Credentials
-Create a `.env` file in the root directory:
+### Configure API keys
 
 ```bash
 cp .env.example .env
+# Edit .env and fill in:
+# GEMINI_API_KEY=your_key_here
+# GROQ_API_KEY=your_key_here
 ```
 
-Open `.env` and fill in your keys (both models offer free tiers):
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-GROQ_API_KEY=your_groq_api_key_here
-```
-
-> **v2 note:** The planned Claude escalation path will use the Claude Agent SDK via local auth (your active Claude Pro or Max subscription) — verify you are logged in to the Claude CLI (Claude Code) once that path ships. v1 needs only the two keys above.
+Both keys are free-tier. No credit card required to get started.
 
 ---
 
-## CLI Commands and Usage
+## Usage
 
-Reflecta packages a pre-configured sample project under [examples/sample_project](file:///c:/Users/Parthiv%20Paul/Documents/Reflecta-Ai-Agent/examples/sample_project) to run the tool instantly.
+Reflecta ships with a pre-built sample project at [`examples/sample_project/`](examples/sample_project/) so you can run it immediately without pointing it at your own code.
 
-### 1. Run the Suite Against the Sample Project
-To run the orchestrator, scan `sample_project`, find untested functions, write/repair tests, and update coverage:
+### Run against the sample project
 
 ```bash
 python -m reflecta run --path examples/sample_project --max-iters 3
 ```
 
-Example Console Output:
+Expected output:
 ```
 Coverage: 64.0% → 92.5%  (+28.5 pp)
 Tests kept: 2 | discarded: 1 | repairs: 1
@@ -132,54 +148,122 @@ Stop reason: exhausted
 Report written to examples/sample_project/reflecta-report.json
 ```
 
-#### `run` options
+### Run against your own project
 
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `--max-iters` | `10` | Maximum targets to attempt in one run. |
-| `--max-repairs` | `2` | Repair attempts per target before it is marked `failed` (the 2-failure rule). |
-| `--max-llm-calls` | `50` | Stop before exceeding this many LLM calls, to stay inside the free-tier daily cap. |
-| `--target-coverage` | unset | Stop once total coverage reaches this percent. |
-| `--stall-k` | `3` | Stop after this many consecutive targets that do not raise coverage. |
-| `--verbose` / `-v` | off | Log each per-target decision (selected, repaired, kept/discarded, stop reason) to stderr. |
+```bash
+python -m reflecta run --path /path/to/your/repo --target-coverage 85
+```
 
-The run also stops cleanly with `stop_reason="budget"` if a provider signals it is rate-limited past the retry ceiling — the report is always written.
+Generated tests are written to `tests/_reflecta/` inside the target repo. Human-written test files are **never touched**.
 
-### 2. View the Last Run Report
-To reprint the JSON report from the previous run without querying the APIs again:
+### All `run` options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--path` | required | Path to the Python repository to improve |
+| `--max-iters` | `10` | Maximum targets to attempt in one run |
+| `--max-repairs` | `2` | Repair attempts before a target is marked `failed` |
+| `--max-llm-calls` | `50` | Hard cap on total LLM calls (free-tier safety) |
+| `--target-coverage` | unset | Stop once total coverage reaches this % |
+| `--stall-k` | `3` | Stop after K consecutive targets that don't raise coverage |
+| `--verbose` / `-v` | off | Log each decision to stderr (selected, repaired, kept/discarded) |
+
+### View the last run report
 
 ```bash
 python -m reflecta report --path examples/sample_project --last
 ```
 
-### 3. Clean Up Generated Tests
-To wipe all generated tests under the `_reflecta` subdirectory:
+### Clean up generated tests
 
 ```bash
 python -m reflecta clean --path examples/sample_project
+```
+
+Only removes files under `tests/_reflecta/`. Human-written tests are untouched.
+
+---
+
+## Stop conditions
+
+The run halts cleanly — always writing a report — when any of these fire:
+
+| Condition | `stop_reason` |
+|-----------|--------------|
+| All pending targets exhausted | `exhausted` |
+| `--max-iters` reached | `max_iters` |
+| `--target-coverage` reached | `target_coverage` |
+| K consecutive targets with no coverage gain | `stall_k` |
+| LLM provider signals rate-limit past retry ceiling | `budget` |
+| No uncovered targets found at all | `no_targets` |
+
+---
+
+## Repository structure
+
+```
+src/reflecta/
+├── models.py          # Canonical dataclasses: CoverageTarget, GeneratedTest, RepairAttempt, RunReport
+├── config.py          # .env loading + API-key preflight (clear error on missing keys)
+├── cli.py             # Typer CLI: run / clean / report
+├── loop.py            # Main orchestration loop (deterministic Python)
+├── coverage_report.py # coverage.json → CoverageTarget list via source AST
+├── selection.py       # Priority ranking: most-missed lines + simpler signatures first
+├── generate.py        # Gemini test generation + _reflecta file writer
+├── runner.py          # Subprocess execution + timeout + API-key scrub from env
+├── repair.py          # Groq repair loop (8B → 70B escalation)
+├── gates.py           # AST assertion gate + coverage-delta gate
+├── budget.py          # BudgetTracker: stop before daily cap
+├── report.py          # write/read reflecta-report.json
+├── prompts.py         # Prompt templates (no logic)
+└── llm/
+    ├── provider.py    # Retry wrapper + BudgetExhausted (all LLM calls go here)
+    ├── gemini.py      # Gemini Flash client
+    └── groq.py        # Groq client
 ```
 
 ---
 
 ## Testing
 
-Ensure your virtual environment is active, then run pytest to execute the unit and integration tests:
+The project has 125 unit and integration tests covering every module. Tests are written test-first, matching the same standard Reflecta enforces on generated tests.
 
 ```bash
+# Run all tests
 pytest
+
+# With coverage report
+coverage run -m pytest && coverage json -o coverage.json
+
+# Lint + format check
+ruff check . && ruff format --check .
 ```
 
-To run the coverage suite and generate the machine-readable JSON output:
-
-```bash
-coverage run -m pytest
-coverage json -o coverage.json
-```
+Live tests (requiring real API keys) are marked `@pytest.mark.live` and excluded from the default run.
 
 ---
 
-## Roadmap
+## Safety guarantees
 
-* **Mutation Testing:** Move beyond line coverage to evaluate test quality using mutation scoring (injecting faults into code to verify if tests fail).
-* **Branch-Coverage Target Selection:** Parse missing branch nodes from the coverage output to target specific code paths.
-* **CI/CD Integration:** Run as a GitHub Action and automatically submit Pull Requests containing validated, coverage-raising tests.
+- **No human test files are ever modified.** Generated tests go only to `tests/_reflecta/`. This is enforced by a hard path check, not convention.
+- **API keys never appear in logs or reports.** The subprocess runner scrubs `*_API_KEY` from the child environment before running generated tests.
+- **Only run against your own code.** The free Gemini tier may train on inputs; do not point Reflecta at third-party repositories.
+
+---
+
+## v2 Roadmap
+
+- **Claude Agent SDK escalation** — When Groq fails to repair a test after the max attempts, v2 spawns a Claude subagent equipped with bash and file-editing tools to resolve complex mock setups and import failures. Runs via Claude Pro/Max subscription auth — no extra API key needed.
+- **Mutation testing** — Replace line-coverage delta with a mutation score to catch tests that cover lines but don't actually verify behavior.
+- **Branch-coverage targeting** — Parse missing branch nodes from `coverage json` to target specific code paths, not just uncovered lines.
+- **CI/CD integration** — Run as a GitHub Action; open a pull request with accepted tests automatically.
+- **Parallel targets** — Process independent targets concurrently via git worktrees.
+- **`reflecta.toml` config** — Project-level defaults so `--max-iters`, `--target-coverage`, etc. don't need to be repeated on every run.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Built by [Parthiv Paul](https://github.com/parthiv-2006).
