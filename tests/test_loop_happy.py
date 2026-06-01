@@ -54,7 +54,7 @@ def test_happy_path_two_targets_both_kept(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.run_test", side_effect=fake_run_test),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run_test),
         patch("reflecta.loop.measure_coverage", side_effect=fake_measure),
     ):
         report = run_loop(tmp_path, max_iters=10)
@@ -87,7 +87,7 @@ def test_happy_path_max_iters_stops_early(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.run_test", side_effect=fake_run_test),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run_test),
         patch("reflecta.loop.measure_coverage", side_effect=fake_measure),
     ):
         report = run_loop(tmp_path, max_iters=1)
@@ -151,7 +151,7 @@ def test_happy_path_run_fails_marks_failed(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.run_test", side_effect=fake_run_test),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run_test),
         patch("reflecta.loop.repair_test", return_value=(None, [])),
         patch("reflecta.loop.measure_coverage", side_effect=fake_measure),
     ):

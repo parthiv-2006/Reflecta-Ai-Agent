@@ -13,7 +13,7 @@ from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.provider import BudgetExhausted
 from reflecta.models import GeneratedTest, RunReport, RunResult, TargetStatus
 from reflecta.repair import repair_test
-from reflecta.runner import child_env, run_test
+from reflecta.runner import child_env, run_test_isolated
 from reflecta.selection import select_next
 
 logger = logging.getLogger("reflecta")
@@ -208,7 +208,7 @@ def run_loop(
                     stall += 1
                     logger.info("  discarded: failed assertion gate")
                     continue
-                result = run_test(test.test_file_path, repo_path)
+                result = run_test_isolated(test.test_file_path, repo_path)
 
             if not result.passed:
                 if budget.exhausted():

@@ -100,7 +100,7 @@ def test_no_existing_tests_loop_proceeds(tmp_path):
         patch("reflecta.loop.collect_existing_tests", return_value=""),
         patch("reflecta.loop.generate_test", return_value=gen),
         patch(
-            "reflecta.loop.run_test",
+            "reflecta.loop.run_test_isolated",
             return_value=RunResult(passed=True, traceback="", duration=0.1),
         ),
         patch(
@@ -131,7 +131,7 @@ def test_broken_target_marked_failed_loop_continues(tmp_path):
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch(
-            "reflecta.loop.run_test",
+            "reflecta.loop.run_test_isolated",
             return_value=RunResult(passed=True, traceback="", duration=0.1),
         ),
         patch(
@@ -163,7 +163,7 @@ def test_hanging_test_enters_repair_path(tmp_path):
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", return_value=gen),
         patch(
-            "reflecta.loop.run_test",
+            "reflecta.loop.run_test_isolated",
             return_value=RunResult(passed=False, traceback="timeout", duration=30.0),
         ),
         patch("reflecta.loop.repair_test", side_effect=fake_repair),

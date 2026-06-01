@@ -67,7 +67,10 @@ def test_repair_fixes_on_attempt_2(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", return_value=gen_test),
-        patch("reflecta.loop.run_test", side_effect=lambda *a, **kw: next(run_results)),
+        patch(
+            "reflecta.loop.run_test_isolated",
+            side_effect=lambda *a, **kw: next(run_results),
+        ),
         patch("reflecta.loop.repair_test", return_value=repair_return),
         patch(
             "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
@@ -115,7 +118,10 @@ def test_repair_exhausted_loop_continues(tmp_path):
         patch(
             "reflecta.loop.generate_test", side_effect=lambda *a, **kw: next(gen_iter)
         ),
-        patch("reflecta.loop.run_test", side_effect=lambda *a, **kw: next(run_iter)),
+        patch(
+            "reflecta.loop.run_test_isolated",
+            side_effect=lambda *a, **kw: next(run_iter),
+        ),
         patch("reflecta.loop.repair_test", return_value=repair_return),
         patch(
             "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
@@ -150,7 +156,7 @@ def test_budget_exhausted_stops_loop(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.run_test", side_effect=fake_run),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
         patch(
             "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
         ),
@@ -181,7 +187,7 @@ def test_generation_exception_marks_failed_and_continues(tmp_path):
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch(
-            "reflecta.loop.run_test",
+            "reflecta.loop.run_test_isolated",
             side_effect=lambda *a, **kw: RunResult(
                 passed=True, traceback="", duration=0.1
             ),
@@ -235,7 +241,7 @@ def test_report_budget_field_populated(tmp_path):
             side_effect=lambda *a, **kw: _good_test(targets[0], tmp_path),
         ),
         patch(
-            "reflecta.loop.run_test",
+            "reflecta.loop.run_test_isolated",
             side_effect=lambda *a, **kw: RunResult(
                 passed=True, traceback="", duration=0.1
             ),
@@ -267,7 +273,7 @@ def test_target_coverage_reached_stops_loop(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.run_test", side_effect=fake_run),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
         patch(
             "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
         ),
@@ -296,7 +302,7 @@ def test_coverage_stall_stops_loop(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.run_test", side_effect=fake_run),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
         patch("reflecta.loop.measure_coverage", side_effect=lambda *a: 50.0),
     ):
         report = run_loop(tmp_path, max_iters=10, stall_k=2)
@@ -323,7 +329,7 @@ def test_max_iters_stops_at_two(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.run_test", side_effect=fake_run),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
         patch(
             "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
         ),

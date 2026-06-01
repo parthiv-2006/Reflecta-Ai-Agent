@@ -1,6 +1,8 @@
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -39,3 +41,38 @@ def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult
         proc.communicate()
         duration = time.monotonic() - start
         return RunResult(passed=False, traceback="timeout", duration=duration)
+
+
+def run_test_isolated(
+    test_file: Path, repo_path: Path, timeout_s: int = 30
+) -> RunResult:
+    """Run a generated test in a disposable temp copy of the repo.
+
+    Prevents a malicious or buggy generated test from deleting or writing files
+    in the actual working tree. The original test file and all source files are
+    untouched regardless of what the generated test does.
+    """
+    repo_path = Path(repo_path).resolve()
+    test_file = Path(test_file).resolve()
+    rel = test_file.relative_to(repo_path)
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="reflecta_iso_"))
+    try:
+        tmp_repo = tmp_root / "repo"
+        shutil.copytree(
+            repo_path,
+            tmp_repo,
+            symlinks=True,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                "__pycache__",
+                "*.pyc",
+                ".venv",
+                "venv",
+                ".reflecta",
+                ".pytest_cache",
+            ),
+        )
+        return run_test(tmp_repo / rel, tmp_repo, timeout_s=timeout_s)
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)

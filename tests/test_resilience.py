@@ -60,7 +60,10 @@ def test_repair_budget_exhausted_marks_failed_continues(tmp_path):
         patch(
             "reflecta.loop.generate_test", side_effect=lambda *a, **kw: next(gen_iter)
         ),
-        patch("reflecta.loop.run_test", side_effect=lambda *a, **kw: next(run_iter)),
+        patch(
+            "reflecta.loop.run_test_isolated",
+            side_effect=lambda *a, **kw: next(run_iter),
+        ),
         patch("reflecta.loop.repair_test", side_effect=fake_repair),
         patch(
             "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
@@ -120,7 +123,7 @@ def test_budget_tracker_stops_before_cap(tmp_path):
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch(
-            "reflecta.loop.run_test",
+            "reflecta.loop.run_test_isolated",
             return_value=RunResult(passed=True, traceback="", duration=0.1),
         ),
         patch(
