@@ -54,7 +54,7 @@ graph TD
     G -- failed / timeout --> H{Attempts < max-repairs?}
     H -- yes --> I[Repair via Groq Llama\n8B → 70B] --> G
     H -- no --> J[Delete file\nMark Failed / Escalated]
-    H -. --escalate flag .-> O[Escalate: Claude Opus\nread_file + write_test + run_test tools]
+    H -. --escalate flag .-> O[Escalate: Claude Sonnet\nread_file + write_test + run_test tools]
     G -- passed --> K[Re-run full coverage\nMeasure delta]
     K --> L{Coverage strictly higher?}
     L -- yes --> M[Keep test file\nMark Kept]
@@ -77,7 +77,7 @@ Each step is routed to the model best suited for it — balancing context window
 | Test generation from full source | **Gemini 2.5 Flash** (`google-genai`) | ~1M-token context holds a full module + existing tests in one prompt |
 | First repair attempt | **Groq Llama 3.1 8B Instant** (`groq`) | Fast, low-latency for structured traceback → patch tasks |
 | Harder repair attempts | **Groq Llama 3.3 70B** (`groq`) | More capable model for complex mock/import failures |
-| Stuck targets after N repairs | **Claude (Opus 4)** (`anthropic`, opt-in `--escalate`) | Real bash + file tools via Claude subscription; reserved for genuinely hard cases |
+| Stuck targets after N repairs | **Claude Sonnet 4** (`anthropic`, opt-in `--escalate`) | Real tool-use loop via Claude subscription; reserved for genuinely hard cases |
 
 ---
 

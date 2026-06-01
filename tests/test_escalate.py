@@ -109,7 +109,7 @@ def test_escalate_succeeds_when_claude_writes_and_runs_passing_test(
         )
 
     assert result is not None
-    assert result.model_used == "claude-opus-4-8"
+    assert result.model_used == "claude-sonnet-4-6"
     assert failing_test.target.status == TargetStatus.KEPT
 
 
@@ -259,6 +259,57 @@ def test_escalate_raises_import_error_without_anthropic(
                 failing_test, failing_result, "source",
                 repo_path=tmp_repo, claude_client=None,
             )
+
+
+@pytest.mark.live
+def test_escalate_live_repairs_simple_failing_test(tmp_repo):
+    """Real Claude call: fix a test that asserts wrong value.
+
+    Requires ANTHROPIC_API_KEY in environment. Run with:
+        pytest -m live tests/test_escalate.py::test_escalate_live_repairs_simple_failing_test
+    """
+    import os
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        pytest.skip("ANTHROPIC_API_KEY not set")
+
+    import anthropic
+
+    from reflecta.escalate import escalate_target
+
+    src = tmp_repo / "mymod.py"
+    src.write_text("def add(a, b):\n    return a + b\n")
+    d = tmp_repo / "tests" / "_reflecta"
+    d.mkdir(parents=True, exist_ok=True)
+    test_path = d / "test_reflecta_mymod_0.py"
+    # Wrong expected value — Claude should fix this to assert add(1,2)==3
+    test_path.write_text(
+        "from mymod import add\n\ndef test_add():\n    assert add(1, 2) == 99\n"
+    )
+    target = CoverageTarget(
+        file_path=src, qualified_name="mymod.add", missing_lines=[2]
+    )
+    test = GeneratedTest(
+        target=target,
+        test_file_path=test_path,
+        source_code=test_path.read_text(),
+        model_used="gemini",
+        assertion_count=1,
+    )
+    result = RunResult(
+        passed=False,
+        traceback="AssertionError: assert 3 == 99",
+        duration=0.1,
+    )
+
+    repaired = escalate_target(
+        test, result, src.read_text(),
+        repo_path=tmp_repo, max_iters=3,
+        claude_client=anthropic.Anthropic(),
+    )
+
+    assert repaired is not None, "Claude should have fixed the wrong expected value"
+    assert target.status == TargetStatus.KEPT
 
 
 def test_escalate_initial_prompt_contains_traceback(tmp_repo, failing_test, failing_result):

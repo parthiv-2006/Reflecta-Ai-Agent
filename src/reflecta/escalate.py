@@ -15,7 +15,7 @@ from reflecta.runner import run_test_isolated
 
 logger = logging.getLogger("reflecta")
 
-MODEL = "claude-opus-4-8"
+MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 
 
