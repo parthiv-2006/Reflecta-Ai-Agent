@@ -304,10 +304,24 @@ def test_escalate_live_repairs_simple_failing_test(tmp_repo):
         duration=0.1,
     )
 
+    import anthropic as _anthropic
+
+    class _TracingClient:
+        """Thin wrapper that prints before/after each API call."""
+        def __init__(self):
+            self._inner = _anthropic.Anthropic(timeout=60.0)
+            self.messages = self
+
+        def create(self, **kwargs):
+            print("\n[live] → sending request to Claude API...", flush=True)
+            resp = self._inner.messages.create(**kwargs)
+            print(f"[live] ← got response: stop_reason={resp.stop_reason}", flush=True)
+            return resp
+
     repaired = escalate_target(
         test, result, src.read_text(),
         repo_path=tmp_repo, max_iters=3,
-        claude_client=anthropic.Anthropic(),
+        claude_client=_TracingClient(),
     )
 
     assert repaired is not None, "Claude should have fixed the wrong expected value"

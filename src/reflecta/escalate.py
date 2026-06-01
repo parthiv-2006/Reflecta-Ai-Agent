@@ -112,7 +112,7 @@ def escalate_target(
         try:
             import anthropic
 
-            claude_client = anthropic.Anthropic()
+            claude_client = anthropic.Anthropic(timeout=60.0)
         except (ImportError, TypeError) as exc:
             raise ImportError(
                 "The anthropic package is required for escalation. "
