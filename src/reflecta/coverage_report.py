@@ -22,7 +22,8 @@ def _build_class_map(tree: ast.Module) -> dict[int, str]:
     class_map: dict[int, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            for lineno in range(node.lineno, node.end_lineno + 1):
+            end = node.end_lineno or node.lineno
+            for lineno in range(node.lineno, end + 1):
                 class_map[lineno] = node.name
     return class_map
 
@@ -68,7 +69,8 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
 
-            func_lines = set(range(node.lineno, node.end_lineno + 1))
+            func_end = node.end_lineno or node.lineno
+            func_lines = set(range(node.lineno, func_end + 1))
             func_missing = sorted(missing_set & func_lines)
             if not func_missing:
                 continue

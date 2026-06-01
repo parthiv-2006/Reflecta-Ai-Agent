@@ -100,9 +100,7 @@ def test_groq_none_content_raises_empty_response():
             msg = SimpleNamespace(content=None)
             return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
 
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=_FakeCompletions())
-    )
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions()))
 
     with pytest.raises(EmptyResponse):
         groq.repair("prompt", client=fake_client)

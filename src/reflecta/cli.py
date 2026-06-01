@@ -37,7 +37,12 @@ def run(
     max_iters: int = typer.Option(10, help="Maximum targets to attempt per run."),
     max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
     max_llm_calls: int = typer.Option(
-        50, help="Stop before exceeding this many LLM calls (free-tier budget)."
+        50,
+        help=(
+            "Free-tier budget: stop before exceeding this many Gemini/Groq calls. "
+            "Claude escalation is a separate quota bounded by --max-claude-iters "
+            "and is NOT counted here."
+        ),
     ),
     target_coverage: float = typer.Option(
         None, help="Stop once total coverage reaches this percent."

@@ -192,6 +192,12 @@ def run_loop(
     → keep/discard. Repeats until one of the four SPEC stop conditions fires:
     target coverage reached, max_iters hit, coverage stalled across ``stall_k``
     consecutive targets, or the LLM budget is depleted.
+
+    Budget scope: ``max_llm_calls`` counts only free-tier calls (Gemini
+    generation + Groq repair). Claude escalation draws on a separate
+    subscription/quota and is bounded per target by ``max_claude_iters``; it is
+    deliberately not charged against ``max_llm_calls``. Escalation activity is
+    surfaced via ``RunReport.escalations_attempted`` / ``escalations_succeeded``.
     """
     repo_path = Path(repo_path).resolve()
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
