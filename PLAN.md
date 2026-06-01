@@ -128,9 +128,9 @@ and the gate stress test (14) remain open below.
   - Commit per case or per batch of related cases.
 
 - [x] **11. Free-tier resilience:** exponential backoff on 429s for both providers (already stubbed in Task 2.5 — full budget tracker here); a budget tracker that stops before the daily cap; graceful fallback when one provider is exhausted.
-- [ ] **12. Isolation:** subprocess + timeout for every generated test; run the target suite against a temp copy so a bad test cannot corrupt the working tree.
-- [ ] **13. Secrets pass:** no keys in repo, logs, or report. Confirm `.env` is gitignored.
-- [ ] **14. Gate stress test (the honesty pass):** adversarial generated tests (assertion-free, trivially-true, import-only-to-bump-coverage). Confirm the gates reject all of them. Add as regression tests.
+- [x] **12. Isolation:** subprocess + timeout for every generated test; run the target suite against a temp copy so a bad test cannot corrupt the working tree.
+- [x] **13. Secrets pass:** no keys in repo, logs, or report. Confirm `.env` is gitignored.
+- [x] **14. Gate stress test (the honesty pass):** adversarial generated tests (assertion-free, trivially-true, import-only-to-bump-coverage). Confirm the gates reject all of them. Add as regression tests.
 - [ ] **15. Tidy:** code-review subagent for dead code and inconsistent patterns; fix what matters, log the rest as v2.
 
 ---
