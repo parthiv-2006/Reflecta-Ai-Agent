@@ -1,23 +1,42 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "reflecta"
-version = "0.0.0"
+version = "0.1.0"
 description = "Find untested Python code, generate targeted pytest tests via free LLM tiers, and keep only tests that raise coverage."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Parthiv Paul", email = "parthiv.paul5545@gmail.com" }]
 requires-python = ">=3.11"
+keywords = ["testing", "coverage", "pytest", "llm", "code-generation", "automation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+]
 dependencies = [
     "typer",
     "google-genai",
     "groq",
 ]
 
+[project.urls]
+"Homepage" = "https://github.com/parthiv-2006/Reflecta-Ai-Agent"
+"Bug Tracker" = "https://github.com/parthiv-2006/Reflecta-Ai-Agent/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest",
     "coverage",
     "ruff",
+    "build",
+    "twine",
 ]
 
 [project.scripts]
