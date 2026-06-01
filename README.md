@@ -4,7 +4,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests: 145 passing](https://img.shields.io/badge/tests-145%20passing-brightgreen.svg)](#testing)
+[![Tests: 155 passing](https://img.shields.io/badge/tests-155%20passing-brightgreen.svg)](#testing)
 
 ---
 
@@ -55,7 +55,7 @@ graph TD
     H -- yes --> I[Repair via Groq Llama\n8B → 70B] --> G
     H -- no --> J[Delete file\nMark Failed / Escalated]
     H -. --escalate flag .-> O[Escalate: Claude Sonnet\nread_file + write_test + run_test tools]
-    G -- passed --> K[Re-run full coverage\nMeasure delta]
+    G -- passed --> K[Re-run full coverage in\nisolated copy + timeout\nMeasure delta]
     K --> L{Coverage strictly higher?}
     L -- yes --> M[Keep test file\nMark Kept]
     L -- no --> F
@@ -194,8 +194,8 @@ The run halts cleanly — always writing a report — when any of these fire:
 |-----------|--------------|
 | All pending targets exhausted | `exhausted` |
 | `--max-iters` reached | `max_iters` |
-| `--target-coverage` reached | `target_coverage` |
-| K consecutive targets with no coverage gain | `stall_k` |
+| `--target-coverage` reached | `target_reached` |
+| K consecutive targets with no coverage gain | `stalled` |
 | LLM provider signals rate-limit past retry ceiling | `budget` |
 | No uncovered targets found at all | `no_targets` |
 
@@ -229,7 +229,7 @@ src/reflecta/
 
 ## Testing
 
-The project has 145 unit and integration tests covering every module. Tests are written test-first, matching the same standard Reflecta enforces on generated tests.
+The project has 155 unit and integration tests covering every module. Tests are written test-first, matching the same standard Reflecta enforces on generated tests.
 
 ```bash
 # Run all tests
@@ -249,6 +249,7 @@ Live tests (requiring real API keys) are marked `@pytest.mark.live` and excluded
 ## Safety guarantees
 
 - **No human test files are ever modified.** Generated tests go only to `tests/_reflecta/`. This is enforced by a hard path check, not convention.
+- **Generated tests never run against your real working tree.** Both validation *and* the coverage-delta measurement execute the generated test inside a disposable copy of the repo, under a wall-clock timeout — a destructive or hanging test cannot corrupt or wedge your checkout.
 - **API keys never appear in logs or reports.** The subprocess runner scrubs `*_API_KEY` from the child environment before running generated tests.
 - **Only run against your own code.** The free Gemini tier may train on inputs; do not point Reflecta at third-party repositories.
 

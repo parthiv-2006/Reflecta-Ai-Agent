@@ -73,7 +73,12 @@ def test_repair_fixes_on_attempt_2(tmp_path):
         ),
         patch("reflecta.loop.repair_test", return_value=repair_return),
         patch(
-            "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10, max_repairs=2)
@@ -124,7 +129,12 @@ def test_repair_exhausted_loop_continues(tmp_path):
         ),
         patch("reflecta.loop.repair_test", return_value=repair_return),
         patch(
-            "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10, max_repairs=2)
@@ -158,7 +168,12 @@ def test_budget_exhausted_stops_loop(tmp_path):
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
         patch(
-            "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10, max_llm_calls=1)
@@ -193,7 +208,12 @@ def test_generation_exception_marks_failed_and_continues(tmp_path):
             ),
         ),
         patch(
-            "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10)
@@ -218,7 +238,14 @@ def test_provider_budget_exhausted_stops_cleanly(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.measure_coverage", side_effect=lambda *a: 50.0),
+        patch(
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (50.0, True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (50.0, True),
+        ),
     ):
         report = run_loop(tmp_path, max_iters=10)
 
@@ -246,7 +273,14 @@ def test_report_budget_field_populated(tmp_path):
                 passed=True, traceback="", duration=0.1
             ),
         ),
-        patch("reflecta.loop.measure_coverage", side_effect=lambda *a: next(iter_cov)),
+        patch(
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(iter_cov), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(iter_cov), True),
+        ),
     ):
         iter_cov = iter([50.0, 60.0])
         report = run_loop(tmp_path, max_iters=10, max_llm_calls=50)
@@ -275,7 +309,12 @@ def test_target_coverage_reached_stops_loop(tmp_path):
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
         patch(
-            "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10, target_coverage=55.0)
@@ -303,13 +342,50 @@ def test_coverage_stall_stops_loop(tmp_path):
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
-        patch("reflecta.loop.measure_coverage", side_effect=lambda *a: 50.0),
+        patch(
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (50.0, True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (50.0, True),
+        ),
     ):
         report = run_loop(tmp_path, max_iters=10, stall_k=2)
 
     assert report.stop_reason == "stalled"
     assert report.tests_discarded == 2
     assert targets[2].status == TargetStatus.PENDING
+
+
+def test_suite_breaking_test_discarded_even_if_coverage_rises(tmp_path):
+    """AUDIT H2: a test that passes in isolation but breaks the full suite is
+    discarded, never kept — even though the coverage delta is positive."""
+    from reflecta.loop import run_loop
+
+    targets = [_target("func_a")]
+
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+        return _good_test(target, tmp_path)
+
+    def fake_run(test_file, repo_path, timeout_s=30):
+        # Passes when run alone (this is the isolated single-test validation).
+        return RunResult(passed=True, traceback="", duration=0.1)
+
+    with (
+        patch("reflecta.loop.extract_targets", return_value=targets),
+        patch("reflecta.loop.generate_test", side_effect=fake_generate),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
+        # Baseline suite is green; coverage rises to 60 but the full suite now
+        # fails because of the new test.
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(60.0, False)),
+    ):
+        report = run_loop(tmp_path, max_iters=1)
+
+    assert report.tests_kept == 0, "a suite-breaking test must not be kept"
+    assert report.tests_discarded == 1
+    assert targets[0].status == TargetStatus.DISCARDED
 
 
 def test_max_iters_stops_at_two(tmp_path):
@@ -331,7 +407,12 @@ def test_max_iters_stops_at_two(tmp_path):
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch("reflecta.loop.run_test_isolated", side_effect=fake_run),
         patch(
-            "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=2)

@@ -23,6 +23,11 @@ def _print_summary(report) -> None:
         f" | discarded: {report.tests_discarded}"
         f" | repairs: {report.repair_attempts_used}"
     )
+    if report.escalations_attempted:
+        typer.echo(
+            f"Escalations: {report.escalations_succeeded}"
+            f"/{report.escalations_attempted} succeeded"
+        )
     typer.echo(f"Stop reason: {report.stop_reason}")
 
 
@@ -32,7 +37,12 @@ def run(
     max_iters: int = typer.Option(10, help="Maximum targets to attempt per run."),
     max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
     max_llm_calls: int = typer.Option(
-        50, help="Stop before exceeding this many LLM calls (free-tier budget)."
+        50,
+        help=(
+            "Free-tier budget: stop before exceeding this many Gemini/Groq calls. "
+            "Claude escalation is a separate quota bounded by --max-claude-iters "
+            "and is NOT counted here."
+        ),
     ),
     target_coverage: float = typer.Option(
         None, help="Stop once total coverage reaches this percent."
@@ -44,7 +54,9 @@ def run(
         False, "--verbose", "-v", help="Log per-target decisions to stderr."
     ),
     escalate: bool = typer.Option(
-        False, "--escalate", help="Escalate stuck targets to Claude Agent SDK after repair exhaustion."
+        False,
+        "--escalate",
+        help="Escalate stuck targets to Claude Agent SDK after repair exhaustion.",
     ),
     max_claude_iters: int = typer.Option(
         3, help="Maximum Claude tool-use iterations per escalated target."
@@ -89,23 +101,40 @@ def clean(
             f.unlink()
             removed += 1
 
-    # Also remove the reflecta-owned coverage workspace.
+    # Also remove the reflecta-owned coverage workspace. Capture whether it
+    # existed *before* removing it — checking .exists() afterwards is always
+    # False and would misreport a workspace-only clean.
     coverage_dir = path / ".reflecta"
-    if coverage_dir.exists():
+    workspace_removed = coverage_dir.exists()
+    if workspace_removed:
         shutil.rmtree(coverage_dir, ignore_errors=True)
 
-    if removed == 0 and not coverage_dir.exists():
+    if removed == 0 and not workspace_removed:
         typer.echo("Nothing to clean.")
         return
-    typer.echo(f"Removed {removed} generated test file(s).")
+
+    parts = [f"Removed {removed} generated test file(s)."]
+    if workspace_removed:
+        parts.append("Removed .reflecta/ workspace.")
+    typer.echo(" ".join(parts))
 
 
 @app.command()
 def report(
     path: Path = typer.Option(..., help="Path to the repository."),
-    last: bool = typer.Option(False, "--last", help="Print the last run report."),
+    last: bool = typer.Option(
+        False, "--last", help="Reprint the most recent run report (see SPEC)."
+    ),
 ) -> None:
-    """Print the run report from the last reflecta run."""
+    """Print the run report from the last reflecta run.
+
+    Pass ``--last`` to reprint the most recent report. Without it we show a
+    hint rather than guessing, so the flag drives real behaviour instead of
+    being decorative.
+    """
+    if not last:
+        typer.echo("Pass --last to reprint the most recent run report.")
+        return
     report_path = path / "reflecta-report.json"
     try:
         r = read_report(report_path)

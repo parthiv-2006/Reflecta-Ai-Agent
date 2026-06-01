@@ -45,17 +45,20 @@ def test_happy_path_two_targets_both_kept(tmp_path):
     def fake_run_test(test_file, repo_path, timeout_s=30):
         return RunResult(passed=True, traceback="", duration=0.1)
 
-    # measure_coverage: before=50, after first=60, after second=70
+    # measure_coverage: before=50, after first=60, after second=70.
+    # Baseline (real) is called once before any candidate (isolated), so a single
+    # shared iterator preserves ordering; suite always green so H2 stays inert.
     coverage_sequence = iter([50.0, 60.0, 70.0])
 
-    def fake_measure(repo_path):
-        return next(coverage_sequence)
+    def fake_measure(*a, **k):
+        return (next(coverage_sequence), True)
 
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch("reflecta.loop.run_test_isolated", side_effect=fake_run_test),
-        patch("reflecta.loop.measure_coverage", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_real", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_isolated", side_effect=fake_measure),
     ):
         report = run_loop(tmp_path, max_iters=10)
 
@@ -81,14 +84,15 @@ def test_happy_path_max_iters_stops_early(tmp_path):
 
     coverage_sequence = iter([50.0, 60.0, 70.0, 80.0])
 
-    def fake_measure(repo_path):
-        return next(coverage_sequence)
+    def fake_measure(*a, **k):
+        return (next(coverage_sequence), True)
 
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch("reflecta.loop.run_test_isolated", side_effect=fake_run_test),
-        patch("reflecta.loop.measure_coverage", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_real", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_isolated", side_effect=fake_measure),
     ):
         report = run_loop(tmp_path, max_iters=1)
 
@@ -113,15 +117,14 @@ def test_happy_path_assertion_gate_discards(tmp_path):
             assertion_count=0,
         )
 
-    coverage_sequence = iter([50.0])
-
-    def fake_measure(repo_path):
-        return next(coverage_sequence)
+    def fake_measure(*a, **k):
+        return (50.0, True)
 
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.measure_coverage", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_real", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_isolated", side_effect=fake_measure),
     ):
         report = run_loop(tmp_path, max_iters=10)
 
@@ -143,17 +146,16 @@ def test_happy_path_run_fails_marks_failed(tmp_path):
     def fake_run_test(test_file, repo_path, timeout_s=30):
         return RunResult(passed=False, traceback="AssertionError", duration=0.1)
 
-    coverage_sequence = iter([50.0])
-
-    def fake_measure(repo_path):
-        return next(coverage_sequence)
+    def fake_measure(*a, **k):
+        return (50.0, True)
 
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
         patch("reflecta.loop.run_test_isolated", side_effect=fake_run_test),
         patch("reflecta.loop.repair_test", return_value=(None, [])),
-        patch("reflecta.loop.measure_coverage", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_real", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_isolated", side_effect=fake_measure),
     ):
         report = run_loop(tmp_path, max_iters=10)
 

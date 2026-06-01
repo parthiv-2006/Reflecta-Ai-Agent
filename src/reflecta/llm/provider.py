@@ -23,6 +23,13 @@ class BudgetExhausted(Exception):
     """Raised when retries are exhausted due to repeated rate limiting."""
 
 
+class EmptyResponse(Exception):
+    """Raised when a provider returns no text (e.g. a safety block or an empty
+    completion). Distinguishes "the model gave us nothing" from a code bug so
+    the loop can mark the target failed with a clear message instead of crashing
+    on ``None.strip()``."""
+
+
 def call_with_retry(fn, *args, max_retries: int = 5, base_delay: float = 1.0, **kwargs):
     for attempt in range(max_retries + 1):
         try:

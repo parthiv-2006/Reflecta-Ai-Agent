@@ -21,9 +21,11 @@ classifiers = [
     "Intended Audience :: Developers",
 ]
 dependencies = [
-    "typer",
-    "google-genai",
-    "groq",
+    # Conservative bounds: lower bound at a known-good release, upper cap at the
+    # next major so a fast-moving SDK can't silently break installs of v0.1.0.
+    "typer>=0.12,<1.0",
+    "google-genai>=1.0,<3.0",
+    "groq>=0.11,<2.0",
 ]
 
 [project.urls]
@@ -42,7 +44,7 @@ escalation = [
     # We call the Messages API directly over httpx (the anthropic SDK hangs on
     # Windows and can't auth OAuth subscription tokens). httpx is already pulled
     # transitively by core deps; declared here so escalation is self-describing.
-    "httpx",
+    "httpx>=0.27,<1.0",
 ]
 
 [project.scripts]

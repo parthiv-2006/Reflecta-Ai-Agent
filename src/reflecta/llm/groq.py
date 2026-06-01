@@ -2,7 +2,12 @@ import os
 
 from groq import Groq
 
-from reflecta.llm.provider import RateLimitError, call_with_retry, strip_fences
+from reflecta.llm.provider import (
+    EmptyResponse,
+    RateLimitError,
+    call_with_retry,
+    strip_fences,
+)
 
 MODEL_FAST = "llama-3.1-8b-instant"
 MODEL_HARD = "llama-3.3-70b-versatile"
@@ -25,4 +30,8 @@ def repair(prompt: str, *, model: str = MODEL_FAST, client=None) -> str:
             raise
 
     raw = call_with_retry(_call)
+    # A None/empty completion would otherwise be written to disk verbatim or
+    # crash strip_fences; surface it as a clear EmptyResponse instead.
+    if not raw:
+        raise EmptyResponse("Groq returned an empty response")
     return strip_fences(raw)

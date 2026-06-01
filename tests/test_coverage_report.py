@@ -152,6 +152,36 @@ def covered(x):
 
 
 # ---------------------------------------------------------------------------
+# Case 7 — a syntactically broken file does not abort extraction (AUDIT H1)
+# ---------------------------------------------------------------------------
+
+
+def test_broken_file_skipped_others_still_extracted(tmp_path: Path) -> None:
+    """One unparseable source file must be skipped, not crash the whole run.
+
+    extract_targets runs before the loop's per-target error isolation, so an
+    unguarded SyntaxError here would abort the entire run before any target is
+    attempted.
+    """
+    _write_source(tmp_path, "broken.py", "def oops(:\n    pass\n")  # invalid syntax
+    _write_source(tmp_path, "good.py", "def add(a, b):\n    return a + b\n")
+
+    cov = {
+        "files": {
+            "broken.py": {"missing_lines": [1, 2], "missing_branches": []},
+            "good.py": {"missing_lines": [2], "missing_branches": []},
+        },
+        "totals": {"percent_covered": 50.0},
+    }
+
+    targets = extract_targets(cov, tmp_path)
+
+    # The broken file is skipped; the good file's target still comes through.
+    names = [t.qualified_name for t in targets]
+    assert names == ["add"]
+
+
+# ---------------------------------------------------------------------------
 # Bonus — priority equals number of missing lines
 # ---------------------------------------------------------------------------
 

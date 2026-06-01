@@ -159,15 +159,35 @@ and the gate stress test (14) remain open below.
   - Files: `src/reflecta/escalate.py` (`_timed_create` helper, updated client creation), `tests/test_escalate.py` (updated `_TracingClient`).
   - Verify: `pytest -x -q` → 145/145 green.
   - Commit: `"fix: hard thread-level timeout for Claude API calls on Windows"`.
+  - **Superseded (commit `1b33a8c`):** the ThreadPoolExecutor wrapper was replaced
+    by calling the Messages API directly over `httpx` with a single per-round-trip
+    `httpx.Timeout`, which the anthropic SDK could not honour reliably. See the
+    module docstring in `src/reflecta/escalate.py` for the current design.
+
+## Production-readiness audit + hardening (2026-06-01)
+
+A principal-engineer audit of tasks 0–21 found one critical isolation flaw plus
+several correctness and hygiene issues. Findings, evidence, and the phased
+remediation plan: [`docs/AUDIT-PRODUCTION-READINESS.md`](docs/AUDIT-PRODUCTION-READINESS.md).
+
+- [x] **Phase A — safety blockers.** Coverage measurement isolated + time-boxed
+  (`measure_coverage_isolated`) so generated tests can't corrupt/wedge the real
+  tree (C1); suite-breaking tests discarded, not kept (H2); per-file parse
+  guarded so one broken file can't abort the run (H1); escalation path check
+  uses `is_relative_to` (C2).
+- [x] **Phase B — robustness.** Escalation/`httpx` lazy-imported off the core
+  path (H3); `EmptyResponse` on None/empty LLM output (M2); escalation counts
+  round-trip in the report + summary (M1); budget scope documented — free-tier
+  only, Claude is separate (M3); defensive `end_lineno` (M4).
+- [x] **Phase C — hygiene.** ruff clean; stray `.omc/` untracked + gitignored;
+  `report --last` honoured; PLAN backlog de-duped; dependency version bounds;
+  `clean` output reports workspace removal.
+- Deferred to v2 (perf, no action): per-iteration repo copy cost (S1), full-suite
+  measurement cost (S2).
+- Suite after hardening: 155 passing, `ruff` clean.
 
 ## v2 backlog (remaining)
 
-- [ ] Mutation testing as a stronger quality signal than line coverage.
-- [ ] Branch-coverage targeting, not just lines.
-- [ ] An eval harness: fixed targets with known gaps, measure coverage gained / accepted / rejected / repairs used on every prompt or routing change.
-- [ ] Parallel targets via git worktrees.
-- [ ] CI integration: open a PR with accepted tests.
-- [ ] Config file (`reflecta.toml`).
 - [ ] Mutation testing as a stronger quality signal than line coverage.
 - [ ] Branch-coverage targeting, not just lines.
 - [ ] An eval harness: fixed targets with known gaps, measure coverage gained / accepted / rejected / repairs used on every prompt or routing change.
