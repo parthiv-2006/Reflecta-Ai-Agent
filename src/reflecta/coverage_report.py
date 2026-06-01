@@ -9,9 +9,12 @@ Qualified-name conventions:
 """
 
 import ast
+import logging
 from pathlib import Path
 
 from reflecta.models import CoverageTarget
+
+logger = logging.getLogger("reflecta")
 
 
 def _build_class_map(tree: ast.Module) -> dict[int, str]:
@@ -47,8 +50,16 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
         if not abs_path.exists():
             continue
 
-        source = abs_path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
+        # A single unparseable/unreadable file must never abort extraction —
+        # extract_targets runs once, before the loop's per-target error
+        # isolation, so an unguarded parse here would crash the whole run.
+        # Skip the bad file and keep extracting targets from the rest.
+        try:
+            source = abs_path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, OSError, ValueError) as exc:
+            logger.warning("skipping unparseable source file %s: %s", abs_path, exc)
+            continue
         class_map = _build_class_map(tree)
 
         missing_set = set(missing)
