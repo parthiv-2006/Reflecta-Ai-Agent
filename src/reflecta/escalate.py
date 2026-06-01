@@ -7,6 +7,7 @@ Drawing on Pro/Max subscription via ANTHROPIC_API_KEY — never the main loop.
 from __future__ import annotations
 
 import ast
+import concurrent.futures
 import logging
 from pathlib import Path
 
@@ -17,6 +18,11 @@ logger = logging.getLogger("reflecta")
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
+# Hard wall-clock deadline per Claude round-trip. Enforced at the Python thread
+# level (concurrent.futures) so it works on Windows regardless of httpx/socket
+# timeout behaviour. The anthropic client is created with max_retries=0 so the
+# SDK never retries and multiplies this wait time.
+_ROUND_TRIP_TIMEOUT_S = 55.0
 
 
 def _tools() -> list[dict]:
@@ -57,6 +63,24 @@ def _tools() -> list[dict]:
             "input_schema": {"type": "object", "properties": {}, "required": []},
         },
     ]
+
+
+def _timed_create(client, **kwargs) -> object:
+    """Call client.messages.create with a hard Python-level timeout.
+
+    concurrent.futures.ThreadPoolExecutor.result(timeout=N) is honoured on
+    Windows unconditionally, unlike httpx/socket timeouts which can stall on
+    TLS connections. The background thread may linger until the socket
+    eventually closes, but the caller always returns within _ROUND_TRIP_TIMEOUT_S.
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(client.messages.create, **kwargs)
+        try:
+            return future.result(timeout=_ROUND_TRIP_TIMEOUT_S)
+        except concurrent.futures.TimeoutError as exc:
+            raise TimeoutError(
+                f"Claude API call timed out after {_ROUND_TRIP_TIMEOUT_S:.0f}s"
+            ) from exc
 
 
 def _execute_tool(
@@ -112,7 +136,11 @@ def escalate_target(
         try:
             import anthropic
 
-            claude_client = anthropic.Anthropic(timeout=60.0)
+            # max_retries=0: the SDK must not silently retry on timeout — that
+            # would multiply _ROUND_TRIP_TIMEOUT_S by the retry count.
+            # timeout=50.0: best-effort socket-level deadline; the thread-level
+            # deadline in _timed_create is the authoritative hard cap.
+            claude_client = anthropic.Anthropic(timeout=50.0, max_retries=0)
         except (ImportError, TypeError) as exc:
             raise ImportError(
                 "The anthropic package is required for escalation. "
@@ -136,14 +164,14 @@ def escalate_target(
         logger.debug("escalation iteration %d/%d for %s", iteration + 1, max_iters, test.target.qualified_name)
 
         try:
-            response = claude_client.messages.create(
+            response = _timed_create(
+                claude_client,
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
                 tools=_tools(),
                 messages=messages,
-                timeout=60,  # 60s per round-trip; 600s SDK default is too long
             )
-        except Exception as exc:
+        except (TimeoutError, Exception) as exc:
             logger.warning("escalation API call failed (iter %d): %s", iteration + 1, exc)
             break
 

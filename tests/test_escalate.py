@@ -307,9 +307,16 @@ def test_escalate_live_repairs_simple_failing_test(tmp_repo):
     import anthropic as _anthropic
 
     class _TracingClient:
-        """Thin wrapper that prints before/after each API call."""
+        """Thin wrapper that prints before/after each API call.
+
+        max_retries=0 prevents the SDK from silently retrying on timeout,
+        which would multiply the wait time set by _timed_create in escalate.py.
+        timeout=50.0 is the best-effort socket-level deadline; the hard cap is
+        enforced by the concurrent.futures wrapper inside _timed_create.
+        """
+
         def __init__(self):
-            self._inner = _anthropic.Anthropic(timeout=60.0)
+            self._inner = _anthropic.Anthropic(timeout=50.0, max_retries=0)
             self.messages = self
 
         def create(self, **kwargs):
