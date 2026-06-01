@@ -5,6 +5,28 @@
 **Reviewer role:** Principal engineer sign-off before further feature work.
 **Baseline:** `pytest` → 145 passed, 2 deselected (live). `ruff check` → 4 errors. `ruff format --check` → 6 files drifted.
 
+## Remediation status (updated 2026-06-01)
+
+Phases A–C of the plan below are **implemented, tested, and pushed** on branch
+`claude/codebase-audit-production-ready-eSekj`. Suite: 155 passed, 2 deselected
+(live); `ruff check` + `ruff format --check` clean.
+
+| ID | Severity | Status |
+|----|----------|--------|
+| C1 | Critical | ✅ Fixed — coverage measurement isolated + time-boxed; regression test reproduces the old hole |
+| C2 | Critical | ✅ Fixed — `is_relative_to` boundary check; sibling-prefix regression test |
+| H1 | High | ✅ Fixed — per-file parse guarded; broken-file regression test |
+| H2 | High | ✅ Fixed — suite-breaking tests discarded; loop + isolated-measure tests |
+| H3 | High | ✅ Fixed — escalation/httpx lazy-imported; core-import contract test |
+| M1 | Medium | ✅ Fixed — escalation counts round-trip + shown in summary; round-trip test |
+| M2 | Medium | ✅ Fixed — `EmptyResponse` on None/empty LLM output; tests for both clients |
+| M3 | Medium | ✅ Resolved — budget scope documented (free-tier only; Claude separate) |
+| M4 | Medium | ✅ Fixed — defensive `end_lineno` |
+| L1–L7 | Low | ✅ Fixed — ruff clean, `.omc` untracked, `report --last`, PLAN de-dupe, dep bounds, clean output |
+| S1–S2 | Perf | ⏳ Logged for v2 (copy cost, full-suite cost) — no action |
+
+The phased plan and per-finding detail below are retained as the record.
+
 ## Verdict
 
 The architecture is sound and faithful to SPEC.md: deterministic orchestration, free-stack routing intact, the two gates implemented as specified, clean module-per-concern layout. The test suite is green and broad.
