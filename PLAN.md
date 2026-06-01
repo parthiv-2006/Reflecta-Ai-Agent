@@ -115,7 +115,7 @@ and the gate stress test (14) remain open below.
 
 ## Phase 6 — Harden (each its own session)
 
-- [ ] **10. Edge cases.**
+- [x] **10. Edge cases.**
   Handle and add regression tests for each of the following enumerated cases:
   - Empty repo: no Python source files found → exits cleanly with `stop_reason="no_targets"`.
   - No existing tests: coverage from package import only, starts at ~0% → loop proceeds normally from zero.
@@ -127,7 +127,7 @@ and the gate stress test (14) remain open below.
   - Gemini returns syntactically invalid Python: `ast.parse` fails → treated as a generation failure, enters repair path; if repair also fails → target marked `failed`.
   - Commit per case or per batch of related cases.
 
-- [ ] **11. Free-tier resilience:** exponential backoff on 429s for both providers (already stubbed in Task 2.5 — full budget tracker here); a budget tracker that stops before the daily cap; graceful fallback when one provider is exhausted.
+- [x] **11. Free-tier resilience:** exponential backoff on 429s for both providers (already stubbed in Task 2.5 — full budget tracker here); a budget tracker that stops before the daily cap; graceful fallback when one provider is exhausted.
 - [ ] **12. Isolation:** subprocess + timeout for every generated test; run the target suite against a temp copy so a bad test cannot corrupt the working tree.
 - [ ] **13. Secrets pass:** no keys in repo, logs, or report. Confirm `.env` is gitignored.
 - [ ] **14. Gate stress test (the honesty pass):** adversarial generated tests (assertion-free, trivially-true, import-only-to-bump-coverage). Confirm the gates reject all of them. Add as regression tests.
