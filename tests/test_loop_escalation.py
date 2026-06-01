@@ -81,7 +81,7 @@ def test_loop_escalation_enabled_calls_escalate_target(tmp_path, sample_target):
         patch("reflecta.loop.passes_assertion_gate", return_value=True),
         patch("reflecta.loop.run_test_isolated") as mock_run,
         patch("reflecta.loop.repair_test") as mock_repair,
-        patch("reflecta.loop.escalate_target") as mock_escalate,
+        patch("reflecta.escalate.escalate_target") as mock_escalate,
     ):
         gen_test = _make_generated_test(tmp_path, sample_target)
         mock_gen.return_value = gen_test
@@ -107,7 +107,7 @@ def test_loop_escalation_success_keeps_test(tmp_path, sample_target):
         patch("reflecta.loop.passes_assertion_gate", return_value=True),
         patch("reflecta.loop.run_test_isolated") as mock_run,
         patch("reflecta.loop.repair_test") as mock_repair,
-        patch("reflecta.loop.escalate_target") as mock_escalate,
+        patch("reflecta.escalate.escalate_target") as mock_escalate,
     ):
         gen_test = _make_generated_test(tmp_path, sample_target)
         mock_gen.return_value = gen_test
@@ -162,7 +162,7 @@ def test_loop_escalation_failure_marks_escalated(tmp_path, sample_target):
         patch("reflecta.loop.passes_assertion_gate", return_value=True),
         patch("reflecta.loop.run_test_isolated") as mock_run,
         patch("reflecta.loop.repair_test") as mock_repair,
-        patch("reflecta.loop.escalate_target") as mock_escalate,
+        patch("reflecta.escalate.escalate_target") as mock_escalate,
     ):
         gen_test = _make_generated_test(tmp_path, sample_target)
         mock_gen.return_value = gen_test

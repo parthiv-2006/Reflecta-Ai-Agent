@@ -10,7 +10,6 @@ from pathlib import Path
 
 from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
-from reflecta.escalate import escalate_target
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.provider import BudgetExhausted
@@ -330,6 +329,11 @@ def run_loop(
                             "  repair exhausted — escalating to Claude (%d iters)",
                             max_claude_iters,
                         )
+                        # Imported lazily: escalation pulls in httpx, an opt-in
+                        # `reflecta[escalation]` dependency. The core run/clean/
+                        # report path must not require it.
+                        from reflecta.escalate import escalate_target
+
                         report.escalations_attempted += 1
                         repaired = escalate_target(
                             test,
