@@ -39,7 +39,10 @@ dev = [
     "twine",
 ]
 escalation = [
-    "anthropic>=0.40",
+    # We call the Messages API directly over httpx (the anthropic SDK hangs on
+    # Windows and can't auth OAuth subscription tokens). httpx is already pulled
+    # transitively by core deps; declared here so escalation is self-describing.
+    "httpx",
 ]
 
 [project.scripts]

@@ -1,15 +1,31 @@
-"""Claude Agent SDK escalation for targets that Groq repair cannot fix.
+"""Claude escalation for targets that Groq repair cannot fix.
 
 Gives Claude real tools (read_file, write_test, run_test) and runs a bounded
 tool-use loop. Reserved for targets marked ESCALATED after repair exhaustion.
-Drawing on Pro/Max subscription via ANTHROPIC_API_KEY — never the main loop.
+Drawing on a Pro/Max subscription or API key via ANTHROPIC_API_KEY — never the
+main loop.
+
+We call the Messages API directly over ``httpx`` rather than via the
+``anthropic`` SDK. Two reasons, both learned the hard way on Windows:
+
+1. The SDK's ``messages.create`` can block indefinitely here and its own
+   ``timeout=`` never fires, whereas a plain ``httpx`` request honours its
+   timeout and returns in well under a second.
+2. ``ANTHROPIC_API_KEY`` may hold an OAuth *subscription* token
+   (``sk-ant-oat01-…``) rather than a console API key (``sk-ant-api03-…``).
+   Those authenticate completely differently — Bearer + an OAuth beta header +
+   the Claude Code system prompt — which the SDK's ``x-api-key`` path can't do.
+   ``_ClaudeClient`` auto-detects the token type and sets the right headers.
 """
 from __future__ import annotations
 
 import ast
-import concurrent.futures
 import logging
+import os
 from pathlib import Path
+from types import SimpleNamespace
+
+import httpx
 
 from reflecta.models import GeneratedTest, RunResult, TargetStatus
 from reflecta.runner import run_test_isolated
@@ -18,11 +34,111 @@ logger = logging.getLogger("reflecta")
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
-# Hard wall-clock deadline per Claude round-trip. Enforced at the Python thread
-# level (concurrent.futures) so it works on Windows regardless of httpx/socket
-# timeout behaviour. The anthropic client is created with max_retries=0 so the
-# SDK never retries and multiplies this wait time.
+_API_URL = "https://api.anthropic.com/v1/messages"
+_ANTHROPIC_VERSION = "2023-06-01"
+_OAUTH_BETA = "oauth-2025-04-20"
+# Required verbatim as the first system block when authenticating with an OAuth
+# subscription token; harmless for console API keys. Without it the API rejects
+# subscription tokens with a 429.
+_CLAUDE_CODE_SYSTEM = "You are Claude Code, Anthropic's official CLI for Claude."
+# Per-round-trip wall-clock deadline. httpx enforces this reliably on Windows,
+# so no ThreadPoolExecutor hack is needed.
 _ROUND_TRIP_TIMEOUT_S = 55.0
+
+
+def _serialize_block(block: object) -> dict:
+    """Turn an assistant content block (SDK-shaped namespace) into API JSON.
+
+    The tool-use loop appends ``response.content`` blocks back into the message
+    history; before re-sending we must render them as plain dicts. Already-dict
+    blocks (and tool_result messages built by the loop) pass through untouched.
+    """
+    if isinstance(block, dict):
+        return block
+    kind = getattr(block, "type", None)
+    if kind == "text":
+        return {"type": "text", "text": block.text}
+    if kind == "tool_use":
+        return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+    raise ValueError(f"cannot serialize content block of type {kind!r}")
+
+
+def _serialize_messages(messages: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for msg in messages:
+        content = msg["content"]
+        if isinstance(content, list):
+            content = [_serialize_block(b) for b in content]
+        out.append({"role": msg["role"], "content": content})
+    return out
+
+
+def _parse_response(data: dict) -> SimpleNamespace:
+    """Render a Messages API JSON response in the SDK-compatible shape the loop
+    expects: ``.stop_reason`` plus ``.content`` blocks with attribute access."""
+    blocks: list[SimpleNamespace] = []
+    for raw in data.get("content", []):
+        if raw.get("type") == "text":
+            blocks.append(SimpleNamespace(type="text", text=raw.get("text", "")))
+        elif raw.get("type") == "tool_use":
+            blocks.append(
+                SimpleNamespace(
+                    type="tool_use",
+                    id=raw["id"],
+                    name=raw["name"],
+                    input=raw.get("input", {}),
+                )
+            )
+    return SimpleNamespace(stop_reason=data.get("stop_reason"), content=blocks)
+
+
+class _ClaudeClient:
+    """Minimal Messages API client over httpx, mirroring the slice of the
+    anthropic SDK surface the loop uses (``client.messages.create(**kwargs)``).
+
+    Auto-detects an OAuth subscription token vs a console API key and sets the
+    appropriate auth headers.
+    """
+
+    def __init__(self, token: str | None = None, *, timeout: float = _ROUND_TRIP_TIMEOUT_S):
+        token = token or os.environ.get("ANTHROPIC_API_KEY")
+        if not token:
+            raise EnvironmentError(
+                "ANTHROPIC_API_KEY is not set. Add it to your .env file "
+                "(see .env.example) or export it before running escalation."
+            )
+        headers = {
+            "anthropic-version": _ANTHROPIC_VERSION,
+            "content-type": "application/json",
+        }
+        if token.startswith("sk-ant-oat"):
+            # OAuth subscription token (e.g. from `claude setup-token`).
+            headers["authorization"] = f"Bearer {token}"
+            headers["anthropic-beta"] = _OAUTH_BETA
+        else:
+            # Console API key (sk-ant-api03-…).
+            headers["x-api-key"] = token
+        self._client = httpx.Client(timeout=httpx.Timeout(timeout), headers=headers)
+        self.messages = self
+
+    def create(self, *, model, max_tokens, messages, tools=None, system=None) -> SimpleNamespace:
+        body: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": _serialize_messages(messages),
+        }
+        # The Claude Code system prompt must lead the system blocks for OAuth
+        # tokens; it is harmless for API keys.
+        system_blocks = [{"type": "text", "text": _CLAUDE_CODE_SYSTEM}]
+        if system:
+            system_blocks.append({"type": "text", "text": system})
+        body["system"] = system_blocks
+        if tools:
+            body["tools"] = tools
+        resp = self._client.post(_API_URL, json=body)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Claude API {resp.status_code}: {resp.text[:300]}")
+        return _parse_response(resp.json())
 
 
 def _tools() -> list[dict]:
@@ -63,27 +179,6 @@ def _tools() -> list[dict]:
             "input_schema": {"type": "object", "properties": {}, "required": []},
         },
     ]
-
-
-def _timed_create(client, **kwargs) -> object:
-    """Call client.messages.create with a hard Python-level timeout.
-
-    IMPORTANT: do NOT use `with ThreadPoolExecutor(...) as pool` here.
-    The context manager's __exit__ calls shutdown(wait=True), which blocks
-    until the thread finishes — re-introducing the hang we're trying to fix.
-    Instead, call shutdown(wait=False) in a finally block so the stalled
-    thread is abandoned and the caller gets control back immediately.
-    """
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = pool.submit(client.messages.create, **kwargs)
-    try:
-        return future.result(timeout=_ROUND_TRIP_TIMEOUT_S)
-    except concurrent.futures.TimeoutError as exc:
-        raise TimeoutError(
-            f"Claude API call timed out after {_ROUND_TRIP_TIMEOUT_S:.0f}s"
-        ) from exc
-    finally:
-        pool.shutdown(wait=False)
 
 
 def _execute_tool(
@@ -136,19 +231,7 @@ def escalate_target(
     failure so the caller can distinguish it from a plain FAILED target.
     """
     if claude_client is None:
-        try:
-            import anthropic
-
-            # max_retries=0: the SDK must not silently retry on timeout — that
-            # would multiply _ROUND_TRIP_TIMEOUT_S by the retry count.
-            # timeout=50.0: best-effort socket-level deadline; the thread-level
-            # deadline in _timed_create is the authoritative hard cap.
-            claude_client = anthropic.Anthropic(timeout=50.0, max_retries=0)
-        except (ImportError, TypeError) as exc:
-            raise ImportError(
-                "The anthropic package is required for escalation. "
-                "Install it with: pip install anthropic"
-            ) from exc
+        claude_client = _ClaudeClient()
 
     initial_prompt = (
         f"I have a failing pytest test that needs repair.\n"
@@ -167,14 +250,13 @@ def escalate_target(
         logger.debug("escalation iteration %d/%d for %s", iteration + 1, max_iters, test.target.qualified_name)
 
         try:
-            response = _timed_create(
-                claude_client,
+            response = claude_client.messages.create(
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
                 tools=_tools(),
                 messages=messages,
             )
-        except (TimeoutError, Exception) as exc:
+        except Exception as exc:
             logger.warning("escalation API call failed (iter %d): %s", iteration + 1, exc)
             break
 
