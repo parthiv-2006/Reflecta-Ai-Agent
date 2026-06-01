@@ -25,7 +25,10 @@ def load_dotenv(path: Path | None = None) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        k = key.strip()
+        v = value.strip().strip('"').strip("'")
+        if not os.environ.get(k):  # missing or empty — .env wins
+            os.environ[k] = v
 
 
 def require_api_keys(

@@ -270,6 +270,8 @@ def test_escalate_live_repairs_simple_failing_test(tmp_repo):
     """
     import os
 
+    from reflecta.config import load_dotenv
+    load_dotenv()
     if not os.environ.get("ANTHROPIC_API_KEY"):
         pytest.skip("ANTHROPIC_API_KEY not set")
 

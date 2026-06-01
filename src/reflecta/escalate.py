@@ -135,12 +135,17 @@ def escalate_target(
     for iteration in range(max_iters):
         logger.debug("escalation iteration %d/%d for %s", iteration + 1, max_iters, test.target.qualified_name)
 
-        response = claude_client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            tools=_tools(),
-            messages=messages,
-        )
+        try:
+            response = claude_client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                tools=_tools(),
+                messages=messages,
+                timeout=60,  # 60s per round-trip; 600s SDK default is too long
+            )
+        except Exception as exc:
+            logger.warning("escalation API call failed (iter %d): %s", iteration + 1, exc)
+            break
 
         messages.append({"role": "assistant", "content": response.content})
 
