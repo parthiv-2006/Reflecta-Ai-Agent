@@ -1,8 +1,10 @@
 import ast
 import json
 import logging
+import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +24,23 @@ logger = logging.getLogger("reflecta")
 
 COVERAGE_DIR = ".reflecta"
 
+# Wall-clock ceiling for a full-suite coverage run. Bounds a generated test that
+# only hangs under full-suite conditions (a hang in isolation is already caught
+# by run_test_isolated's own timeout). Generous because it covers the *whole*
+# suite, not a single test.
+COVERAGE_TIMEOUT_S = 300
+
+# Directories never worth copying into an isolated coverage run.
+_ISOLATION_IGNORE = shutil.ignore_patterns(
+    ".git",
+    "__pycache__",
+    "*.pyc",
+    ".venv",
+    "venv",
+    ".reflecta",
+    ".pytest_cache",
+)
+
 
 def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
     """Reflecta-owned coverage data-file and json paths inside ``repo_path``.
@@ -34,49 +53,107 @@ def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
     return d / ".coverage", d / "coverage.json"
 
 
-def measure_coverage(repo_path: Path) -> float:
-    """Run the full test suite under coverage and return percent_covered.
+def _run_coverage(
+    cwd: Path, data_file: Path, json_file: Path, *, timeout_s: int
+) -> tuple[float, bool]:
+    """Run the suite under coverage in ``cwd``; return (percent_covered, passed).
 
-    Coverage data and the json report are written to ``.reflecta/`` via an
-    explicit ``--data-file`` so the repo's own coverage artifacts are untouched.
+    ``passed`` is the pytest exit status (True only if every collected test
+    passed). On timeout we report ``(0.0, False)`` so a hung suite can never be
+    mistaken for a coverage gain. Both subprocesses are time-boxed.
+    """
+    env = child_env()
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--data-file={data_file}",
+                "-m",
+                "pytest",
+                "--tb=no",
+                "-q",
+            ],
+            cwd=cwd,
+            capture_output=True,
+            env=env,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        return 0.0, False
+    passed = proc.returncode == 0
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "json",
+                f"--data-file={data_file}",
+                "-o",
+                str(json_file),
+            ],
+            cwd=cwd,
+            capture_output=True,
+            env=env,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        return 0.0, passed
+    if not json_file.exists():
+        return 0.0, passed
+    data = json.loads(json_file.read_text(encoding="utf-8"))
+    return data.get("totals", {}).get("percent_covered", 0.0), passed
+
+
+def measure_coverage_real(repo_path: Path) -> tuple[float, bool]:
+    """Baseline measurement, run in place in the real tree.
+
+    Runs in place (not isolated) for two reasons: the resulting ``coverage.json``
+    must carry the repo's real file paths so ``extract_targets`` can resolve
+    them, and at baseline the only tests present are human-written or
+    reflecta's own previously-kept tests — never a test generated *this*
+    iteration. Coverage artifacts go under ``.reflecta/`` so the repo's own
+    ``.coverage`` / ``coverage.json`` are untouched. Returns (percent, passed).
     """
     repo_path = Path(repo_path).resolve()
     data_file, json_file = coverage_paths(repo_path)
-    env = child_env()
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "coverage",
-            "run",
-            f"--data-file={data_file}",
-            "-m",
-            "pytest",
-            "--tb=no",
-            "-q",
-        ],
-        cwd=repo_path,
-        capture_output=True,
-        env=env,
-    )
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "coverage",
-            "json",
-            f"--data-file={data_file}",
-            "-o",
-            str(json_file),
-        ],
-        cwd=repo_path,
-        capture_output=True,
-        env=env,
-    )
-    if not json_file.exists():
-        return 0.0
-    data = json.loads(json_file.read_text(encoding="utf-8"))
-    return data.get("totals", {}).get("percent_covered", 0.0)
+    return _run_coverage(repo_path, data_file, json_file, timeout_s=COVERAGE_TIMEOUT_S)
+
+
+def measure_coverage(repo_path: Path) -> float:
+    """Backwards-compatible float-only baseline measurement."""
+    return measure_coverage_real(repo_path)[0]
+
+
+def measure_coverage_isolated(
+    repo_path: Path, *, timeout_s: int = COVERAGE_TIMEOUT_S
+) -> tuple[float, bool]:
+    """Measure total coverage by running the full suite in a disposable copy.
+
+    Used after a test is generated this iteration: the generated test executes
+    only against the throwaway copy, so a destructive or hanging test cannot
+    corrupt the real working tree or wedge the run. The copy mirrors the real
+    tree (which already contains the candidate test), so the percent it reports
+    is directly comparable to the in-place baseline. Returns (percent, passed).
+    """
+    repo_path = Path(repo_path).resolve()
+    tmp_root = Path(tempfile.mkdtemp(prefix="reflecta_cov_"))
+    try:
+        tmp_repo = tmp_root / "repo"
+        shutil.copytree(repo_path, tmp_repo, symlinks=True, ignore=_ISOLATION_IGNORE)
+        # Coverage artifacts live outside the copied tree so they are never
+        # collected and never need ignoring.
+        return _run_coverage(
+            tmp_repo,
+            tmp_root / ".coverage",
+            tmp_root / "coverage.json",
+            timeout_s=timeout_s,
+        )
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 def process_test(
@@ -120,7 +197,7 @@ def run_loop(
     repo_path = Path(repo_path).resolve()
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
 
-    coverage_before = measure_coverage(repo_path)
+    coverage_before, baseline_suite_passed = measure_coverage_real(repo_path)
 
     _, coverage_json_path = coverage_paths(repo_path)
     if coverage_json_path.exists():
@@ -284,7 +361,22 @@ def run_loop(
                 logger.info("  repaired after %d attempt(s)", len(attempts))
                 test = repaired
 
-            coverage_after = measure_coverage(repo_path)
+            coverage_after, suite_passed = measure_coverage_isolated(repo_path)
+
+            # H2: a test can pass alone yet break the suite (fixture/ordering/
+            # state collisions). Never keep a test that turns a green suite red.
+            # If the baseline suite was already red we don't blame the
+            # candidate — it already passed in isolation, so fall through to the
+            # delta gate.
+            if baseline_suite_passed and not suite_passed:
+                test.test_file_path.unlink(missing_ok=True)
+                test.target.status = TargetStatus.DISCARDED
+                report.tests_discarded += 1
+                stall += 1
+                iter_count += 1
+                logger.info("  discarded: test passes alone but breaks the full suite")
+                continue
+
             outcome = process_test(
                 test, coverage_before=coverage_before, coverage_after=coverage_after
             )

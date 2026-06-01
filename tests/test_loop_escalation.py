@@ -50,7 +50,8 @@ def test_loop_escalation_disabled_by_default_marks_failed(tmp_path, sample_targe
     from reflecta.loop import run_loop
 
     with (
-        patch("reflecta.loop.measure_coverage", return_value=50.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(50.0, True)),
         patch("reflecta.loop.extract_targets", return_value=[sample_target]),
         patch("reflecta.loop.generate_test") as mock_gen,
         patch("reflecta.loop.passes_assertion_gate", return_value=True),
@@ -73,7 +74,8 @@ def test_loop_escalation_enabled_calls_escalate_target(tmp_path, sample_target):
     from reflecta.loop import run_loop
 
     with (
-        patch("reflecta.loop.measure_coverage", return_value=50.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(50.0, True)),
         patch("reflecta.loop.extract_targets", return_value=[sample_target]),
         patch("reflecta.loop.generate_test") as mock_gen,
         patch("reflecta.loop.passes_assertion_gate", return_value=True),
@@ -98,7 +100,8 @@ def test_loop_escalation_success_keeps_test(tmp_path, sample_target):
     from reflecta.loop import run_loop
 
     with (
-        patch("reflecta.loop.measure_coverage", side_effect=[50.0, 60.0]),
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(60.0, True)),
         patch("reflecta.loop.extract_targets", return_value=[sample_target]),
         patch("reflecta.loop.generate_test") as mock_gen,
         patch("reflecta.loop.passes_assertion_gate", return_value=True),
@@ -152,7 +155,8 @@ def test_loop_escalation_failure_marks_escalated(tmp_path, sample_target):
     from reflecta.loop import run_loop
 
     with (
-        patch("reflecta.loop.measure_coverage", return_value=50.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(50.0, True)),
         patch("reflecta.loop.extract_targets", return_value=[sample_target]),
         patch("reflecta.loop.generate_test") as mock_gen,
         patch("reflecta.loop.passes_assertion_gate", return_value=True),
