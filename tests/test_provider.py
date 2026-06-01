@@ -1,7 +1,10 @@
+from types import SimpleNamespace
+
 import pytest
 
 from reflecta.llm.provider import (
     BudgetExhausted,
+    EmptyResponse,
     RateLimitError,
     call_with_retry,
     strip_fences,
@@ -69,3 +72,37 @@ def test_budget_exhausted(monkeypatch):
 
     assert len(sleep_calls) == 3
     assert sleep_calls == [1.0, 2.0, 4.0]
+
+
+# ---------------------------------------------------------------------------
+# AUDIT M2 — empty/None provider responses raise EmptyResponse, not crash
+# ---------------------------------------------------------------------------
+
+
+def test_gemini_none_text_raises_empty_response():
+    from reflecta.llm import gemini
+
+    class _FakeModels:
+        def generate_content(self, *, model, contents):
+            return SimpleNamespace(text=None)  # safety block / empty candidate
+
+    fake_client = SimpleNamespace(models=_FakeModels())
+
+    with pytest.raises(EmptyResponse):
+        gemini.generate("prompt", client=fake_client)
+
+
+def test_groq_none_content_raises_empty_response():
+    from reflecta.llm import groq
+
+    class _FakeCompletions:
+        def create(self, *, model, messages):
+            msg = SimpleNamespace(content=None)
+            return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=_FakeCompletions())
+    )
+
+    with pytest.raises(EmptyResponse):
+        groq.repair("prompt", client=fake_client)
