@@ -11,3 +11,5 @@ reflecta-report.json
 *.egg-info/
 build/
 dist/
+# Editor/agent local state — never committed.
+.omc/

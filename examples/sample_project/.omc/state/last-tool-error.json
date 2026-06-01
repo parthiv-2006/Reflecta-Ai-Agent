@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd \\\"C:\\\\Users\\\\Parthiv Paul\\\\Documents\\\\Reflecta-Ai-Agent\\\" && python -c \\\"\\nfrom pathlib import Path\\nfrom src.coverloop.skeleton import extract_targets\\ntargets = extract_targets(\\n    ...",
-  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<string>\", line 3, in <module>\r\n    from src.coverloop.skeleton import extract_targets\r\n  File \"C:\\Users\\Parthiv Paul\\Documents\\Reflecta-Ai-Agent\\src\\coverloop\\skeleton.py\", line 14, in <module>\r\n    from coverloop.llm.gemini import generate_test_source\r\nModuleNotFoundError: No module named 'coverloop'",
-  "timestamp": "2026-05-31T16:22:05.390Z",
-  "retry_count": 1
-}
