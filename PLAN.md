@@ -153,6 +153,13 @@ and the gate stress test (14) remain open below.
   - Verify: 14 new tests pass; full suite 145/145 green.
   - Commit: `"feat: Claude Agent SDK escalation for stuck targets"`.
 
+- [x] **21a. Escalation timeout hardening.**
+  - Problem: `escalate_target` hung indefinitely on Windows after printing `[live] → sending request to Claude API...`. Three compounding causes: (1) httpx `read_timeout` is a per-chunk deadline, not a total-response deadline — a slow server that trickles bytes never triggers it; (2) the SDK default `max_retries=2` silently retried on timeout, multiplying the wait; (3) Windows TLS socket timeouts are unreliable under httpx.
+  - Fix: wrap every `messages.create()` call in `concurrent.futures.ThreadPoolExecutor` with `future.result(timeout=55)` — a Python-level deadline that is always honoured regardless of socket/httpx behaviour. Also set `max_retries=0` on the Anthropic client so retries can't amplify the wait.
+  - Files: `src/reflecta/escalate.py` (`_timed_create` helper, updated client creation), `tests/test_escalate.py` (updated `_TracingClient`).
+  - Verify: `pytest -x -q` → 145/145 green.
+  - Commit: `"fix: hard thread-level timeout for Claude API calls on Windows"`.
+
 ## v2 backlog (remaining)
 
 - [ ] Mutation testing as a stronger quality signal than line coverage.

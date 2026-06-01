@@ -77,7 +77,7 @@ Each step is routed to the model best suited for it — balancing context window
 | Test generation from full source | **Gemini 2.5 Flash** (`google-genai`) | ~1M-token context holds a full module + existing tests in one prompt |
 | First repair attempt | **Groq Llama 3.1 8B Instant** (`groq`) | Fast, low-latency for structured traceback → patch tasks |
 | Harder repair attempts | **Groq Llama 3.3 70B** (`groq`) | More capable model for complex mock/import failures |
-| Stuck targets after N repairs | **Claude Sonnet 4** (`anthropic`, opt-in `--escalate`) | Real tool-use loop via Claude subscription; reserved for genuinely hard cases |
+| Stuck targets after N repairs | **Claude Sonnet 4.6** (`anthropic`, opt-in `--escalate`) | Real tool-use loop via Claude subscription; reserved for genuinely hard cases |
 
 ---
 
@@ -167,7 +167,7 @@ Generated tests are written to `tests/_reflecta/` inside the target repo. Human-
 | `--target-coverage` | unset | Stop once total coverage reaches this % |
 | `--stall-k` | `3` | Stop after K consecutive targets that don't raise coverage |
 | `--verbose` / `-v` | off | Log each decision to stderr (selected, repaired, kept/discarded) |
-| `--escalate` | off | After Groq repair exhausts, escalate to Claude Opus with real tools (requires `ANTHROPIC_API_KEY`) |
+| `--escalate` | off | After Groq repair exhausts, escalate to Claude Sonnet with real tools (requires `ANTHROPIC_API_KEY`) |
 | `--max-claude-iters` | `3` | Maximum Claude tool-use iterations per escalated target |
 
 ### View the last run report
@@ -214,7 +214,7 @@ src/reflecta/
 ├── generate.py        # Gemini test generation + _reflecta file writer
 ├── runner.py          # Subprocess execution + timeout + API-key scrub from env
 ├── repair.py          # Groq repair loop (8B → 70B escalation)
-├── escalate.py        # Claude Opus tool-use loop for targets repair can't fix (opt-in)
+├── escalate.py        # Claude Sonnet tool-use loop for targets repair can't fix (opt-in)
 ├── gates.py           # AST assertion gate + coverage-delta gate
 ├── budget.py          # BudgetTracker: stop before daily cap
 ├── report.py          # write/read reflecta-report.json
@@ -256,7 +256,7 @@ Live tests (requiring real API keys) are marked `@pytest.mark.live` and excluded
 
 ## v2 Roadmap
 
-- **Claude Agent SDK escalation** ✅ — When Groq fails to repair a test after max attempts, pass `--escalate` to hand the target to Claude Opus, which has `read_file`, `write_test`, and `run_test` tools and runs a bounded iterative loop. Requires `ANTHROPIC_API_KEY`. Install the optional dep with `pip install reflecta[escalation]`.
+- **Claude Agent SDK escalation** ✅ — When Groq fails to repair a test after max attempts, pass `--escalate` to hand the target to Claude Sonnet 4.6, which has `read_file`, `write_test`, and `run_test` tools and runs a bounded iterative loop (hard 55-second timeout per round-trip, no retries). Requires `ANTHROPIC_API_KEY`. Install the optional dep with `pip install reflecta[escalation]`.
 - **Mutation testing** — Replace line-coverage delta with a mutation score to catch tests that cover lines but don't actually verify behavior.
 - **Branch-coverage targeting** — Parse missing branch nodes from `coverage json` to target specific code paths, not just uncovered lines.
 - **CI/CD integration** — Run as a GitHub Action; open a pull request with accepted tests automatically.
