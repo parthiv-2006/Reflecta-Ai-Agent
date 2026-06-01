@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import subprocess
@@ -10,7 +11,7 @@ from reflecta.coverage_report import extract_targets
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.provider import BudgetExhausted
-from reflecta.models import GeneratedTest, RunReport, TargetStatus
+from reflecta.models import GeneratedTest, RunReport, RunResult, TargetStatus
 from reflecta.repair import repair_test
 from reflecta.runner import child_env, run_test
 from reflecta.selection import select_next
@@ -124,6 +125,17 @@ def run_loop(
         coverage_json = {}
     targets = extract_targets(coverage_json, repo_path)
 
+    if not targets:
+        report = RunReport(
+            repo_path=repo_path,
+            started_at=datetime.now(),
+            coverage_before=coverage_before,
+            coverage_after=coverage_before,
+            targets=[],
+            stop_reason="no_targets",
+        )
+        return report
+
     report = RunReport(
         repo_path=repo_path,
         started_at=datetime.now(),
@@ -176,16 +188,27 @@ def run_loop(
             )
             budget.charge(1)
 
-            if not passes_assertion_gate(test):
-                test.test_file_path.unlink(missing_ok=True)
-                target.status = TargetStatus.DISCARDED
-                report.tests_discarded += 1
-                iter_count += 1
-                stall += 1
-                logger.info("  discarded: failed assertion gate")
-                continue
-
-            result = run_test(test.test_file_path, repo_path)
+            try:
+                ast.parse(test.source_code)
+            except SyntaxError:
+                # Invalid Python from the LLM — treat as a run failure so the
+                # repair path gets a chance to fix it rather than silently
+                # discarding the target. TASK-10 §8.
+                result = RunResult(
+                    passed=False,
+                    traceback="SyntaxError: generated code is not valid Python",
+                    duration=0.0,
+                )
+            else:
+                if not passes_assertion_gate(test):
+                    test.test_file_path.unlink(missing_ok=True)
+                    target.status = TargetStatus.DISCARDED
+                    report.tests_discarded += 1
+                    iter_count += 1
+                    stall += 1
+                    logger.info("  discarded: failed assertion gate")
+                    continue
+                result = run_test(test.test_file_path, repo_path)
 
             if not result.passed:
                 if budget.exhausted():
