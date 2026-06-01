@@ -23,6 +23,11 @@ def _print_summary(report) -> None:
         f" | discarded: {report.tests_discarded}"
         f" | repairs: {report.repair_attempts_used}"
     )
+    if report.escalations_attempted:
+        typer.echo(
+            f"Escalations: {report.escalations_succeeded}"
+            f"/{report.escalations_attempted} succeeded"
+        )
     typer.echo(f"Stop reason: {report.stop_reason}")
 
 

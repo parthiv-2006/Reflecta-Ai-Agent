@@ -46,6 +46,8 @@ def read_report(path: Path) -> RunReport:
         tests_kept=data["tests_kept"],
         tests_discarded=data["tests_discarded"],
         repair_attempts_used=data["repair_attempts_used"],
+        escalations_attempted=data.get("escalations_attempted", 0),
+        escalations_succeeded=data.get("escalations_succeeded", 0),
         budget=data.get("budget", ""),
         stop_reason=data.get("stop_reason", ""),
     )
