@@ -28,13 +28,17 @@ def load_dotenv(path: Path | None = None) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
-def require_api_keys(keys: tuple[str, ...] = REQUIRED_KEYS) -> None:
+def require_api_keys(
+    keys: tuple[str, ...] = REQUIRED_KEYS, *, escalate: bool = False
+) -> None:
     """Raise ``EnvironmentError`` naming the first missing key.
 
     Called before the loop so the failure is a clear preflight error rather than
-    an opaque SDK traceback once generation starts.
+    an opaque SDK traceback once generation starts. When ``escalate=True``,
+    also checks for ANTHROPIC_API_KEY.
     """
-    for key in keys:
+    all_keys = keys + ("ANTHROPIC_API_KEY",) if escalate else keys
+    for key in all_keys:
         if not os.environ.get(key):
             raise EnvironmentError(
                 f"{key} is not set. Add it to your .env file (see .env.example) "

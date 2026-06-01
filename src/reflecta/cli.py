@@ -43,6 +43,12 @@ def run(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Log per-target decisions to stderr."
     ),
+    escalate: bool = typer.Option(
+        False, "--escalate", help="Escalate stuck targets to Claude Agent SDK after repair exhaustion."
+    ),
+    max_claude_iters: int = typer.Option(
+        3, help="Maximum Claude tool-use iterations per escalated target."
+    ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
@@ -50,7 +56,7 @@ def run(
         logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
     load_dotenv()
     try:
-        require_api_keys()
+        require_api_keys(escalate=escalate)
     except EnvironmentError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1)
@@ -61,6 +67,8 @@ def run(
         max_llm_calls=max_llm_calls,
         target_coverage=target_coverage,
         stall_k=stall_k,
+        escalate=escalate,
+        max_claude_iters=max_claude_iters,
     )
     report_path = path / "reflecta-report.json"
     write_report(report, report_path)

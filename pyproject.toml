@@ -38,6 +38,9 @@ dev = [
     "build",
     "twine",
 ]
+escalation = [
+    "anthropic>=0.40",
+]
 
 [project.scripts]
 reflecta = "reflecta.__main__:main"
