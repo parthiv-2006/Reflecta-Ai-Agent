@@ -218,14 +218,28 @@ def run_loop(
                     report.stop_reason = "budget"
                     break
 
-                repaired, attempts = repair_test(
-                    test,
-                    result,
-                    source,
-                    repo_path=repo_path,
-                    max_repairs=max_repairs,
-                    groq_client=groq_client,
-                )
+                try:
+                    repaired, attempts = repair_test(
+                        test,
+                        result,
+                        source,
+                        repo_path=repo_path,
+                        max_repairs=max_repairs,
+                        groq_client=groq_client,
+                    )
+                except BudgetExhausted:
+                    # Repair provider (Groq) hit its daily cap. Mark this target
+                    # failed and continue — only a generation-side BudgetExhausted
+                    # stops the entire loop. TASK-11.
+                    logger.warning(
+                        "repair provider exhausted on %s; skipping target",
+                        target.qualified_name,
+                    )
+                    test.test_file_path.unlink(missing_ok=True)
+                    target.status = TargetStatus.FAILED
+                    iter_count += 1
+                    stall += 1
+                    continue
                 report.repair_attempts_used += len(attempts)
                 budget.charge(len(attempts))
 

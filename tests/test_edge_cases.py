@@ -58,7 +58,9 @@ def test_empty_repo_stop_reason_no_targets(tmp_path):
 
     def fake_generate(*a, **kw):
         generate_calls["n"] += 1
-        raise AssertionError("generate_test should not be called when there are no targets")
+        raise AssertionError(
+            "generate_test should not be called when there are no targets"
+        )
 
     with (
         patch("reflecta.loop.extract_targets", return_value=[]),
@@ -167,7 +169,7 @@ def test_hanging_test_enters_repair_path(tmp_path):
         patch("reflecta.loop.repair_test", side_effect=fake_repair),
         patch("reflecta.loop.measure_coverage", return_value=50.0),
     ):
-        report = run_loop(tmp_path, max_iters=5)
+        run_loop(tmp_path, max_iters=5)
 
     assert repair_calls["n"] == 1
     assert targets[0].status == TargetStatus.FAILED
@@ -208,7 +210,10 @@ def test_invalid_python_from_gemini_enters_repair_path(tmp_path):
 
     def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None):
         repair_calls["n"] += 1
-        return (None, [RepairAttempt(1, result.traceback, "groq-fast", RepairResult.FAIL)])
+        return (
+            None,
+            [RepairAttempt(1, result.traceback, "groq-fast", RepairResult.FAIL)],
+        )
 
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
@@ -220,4 +225,6 @@ def test_invalid_python_from_gemini_enters_repair_path(tmp_path):
 
     assert repair_calls["n"] == 1, "repair should be called for invalid Python"
     assert targets[0].status == TargetStatus.FAILED
-    assert report.tests_discarded == 0, "invalid Python should not be counted as discarded"
+    assert report.tests_discarded == 0, (
+        "invalid Python should not be counted as discarded"
+    )
