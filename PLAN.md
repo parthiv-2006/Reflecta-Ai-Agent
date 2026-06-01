@@ -145,9 +145,22 @@ and the gate stress test (14) remain open below.
 
 ---
 
-## v2 backlog (Phase 8, same mini-loop each)
+## Phase 8 — v2 Features
 
-- [ ] Claude Agent SDK escalation for `escalated` targets (real bash + edit tools, its own bounded loop).
+- [x] **21. Claude Agent SDK escalation.**
+  - Does: when Groq repair exhausts `--max-repairs` attempts, passing `--escalate` hands the target to `escalate.py` — a Claude Opus tool-use loop with `read_file`, `write_test`, and `run_test` tools. Bounded by `--max-claude-iters` (default 3). On failure the target is marked `ESCALATED` (distinct from `FAILED`). Report tracks `escalations_attempted` and `escalations_succeeded`. Opt-in dep: `pip install reflecta[escalation]`. Requires `ANTHROPIC_API_KEY`.
+  - Files: `src/reflecta/escalate.py` (new), `src/reflecta/models.py`, `src/reflecta/loop.py`, `src/reflecta/cli.py`, `src/reflecta/config.py`, `pyproject.toml`, `tests/test_escalate.py` (new, 10 tests), `tests/test_loop_escalation.py` (new, 5 tests).
+  - Verify: 14 new tests pass; full suite 145/145 green.
+  - Commit: `"feat: Claude Agent SDK escalation for stuck targets"`.
+
+## v2 backlog (remaining)
+
+- [ ] Mutation testing as a stronger quality signal than line coverage.
+- [ ] Branch-coverage targeting, not just lines.
+- [ ] An eval harness: fixed targets with known gaps, measure coverage gained / accepted / rejected / repairs used on every prompt or routing change.
+- [ ] Parallel targets via git worktrees.
+- [ ] CI integration: open a PR with accepted tests.
+- [ ] Config file (`reflecta.toml`).
 - [ ] Mutation testing as a stronger quality signal than line coverage.
 - [ ] Branch-coverage targeting, not just lines.
 - [ ] An eval harness: fixed targets with known gaps, measure coverage gained / accepted / rejected / repairs used on every prompt or routing change.

@@ -4,7 +4,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests: 125 passing](https://img.shields.io/badge/tests-125%20passing-brightgreen.svg)](#testing)
+[![Tests: 145 passing](https://img.shields.io/badge/tests-145%20passing-brightgreen.svg)](#testing)
 
 ---
 
@@ -53,8 +53,8 @@ graph TD
     E -- passes --> G[Run test in isolated\nsubprocess + timeout]
     G -- failed / timeout --> H{Attempts < max-repairs?}
     H -- yes --> I[Repair via Groq Llama\n8B → 70B] --> G
-    H -- no --> J[Delete file\nMark Failed]
-    H -. v2 planned .-> O[Escalate: Claude Agent SDK\nbash + edit tools]
+    H -- no --> J[Delete file\nMark Failed / Escalated]
+    H -. --escalate flag .-> O[Escalate: Claude Opus\nread_file + write_test + run_test tools]
     G -- passed --> K[Re-run full coverage\nMeasure delta]
     K --> L{Coverage strictly higher?}
     L -- yes --> M[Keep test file\nMark Kept]
@@ -77,7 +77,7 @@ Each step is routed to the model best suited for it — balancing context window
 | Test generation from full source | **Gemini 2.5 Flash** (`google-genai`) | ~1M-token context holds a full module + existing tests in one prompt |
 | First repair attempt | **Groq Llama 3.1 8B Instant** (`groq`) | Fast, low-latency for structured traceback → patch tasks |
 | Harder repair attempts | **Groq Llama 3.3 70B** (`groq`) | More capable model for complex mock/import failures |
-| Stuck targets after N repairs | **Claude Agent SDK** *(v2, planned)* | Real bash + file tools via Claude subscription; reserved for genuinely hard cases |
+| Stuck targets after N repairs | **Claude (Opus 4)** (`anthropic`, opt-in `--escalate`) | Real bash + file tools via Claude subscription; reserved for genuinely hard cases |
 
 ---
 
@@ -167,6 +167,8 @@ Generated tests are written to `tests/_reflecta/` inside the target repo. Human-
 | `--target-coverage` | unset | Stop once total coverage reaches this % |
 | `--stall-k` | `3` | Stop after K consecutive targets that don't raise coverage |
 | `--verbose` / `-v` | off | Log each decision to stderr (selected, repaired, kept/discarded) |
+| `--escalate` | off | After Groq repair exhausts, escalate to Claude Opus with real tools (requires `ANTHROPIC_API_KEY`) |
+| `--max-claude-iters` | `3` | Maximum Claude tool-use iterations per escalated target |
 
 ### View the last run report
 
@@ -212,6 +214,7 @@ src/reflecta/
 ├── generate.py        # Gemini test generation + _reflecta file writer
 ├── runner.py          # Subprocess execution + timeout + API-key scrub from env
 ├── repair.py          # Groq repair loop (8B → 70B escalation)
+├── escalate.py        # Claude Opus tool-use loop for targets repair can't fix (opt-in)
 ├── gates.py           # AST assertion gate + coverage-delta gate
 ├── budget.py          # BudgetTracker: stop before daily cap
 ├── report.py          # write/read reflecta-report.json
@@ -226,7 +229,7 @@ src/reflecta/
 
 ## Testing
 
-The project has 125 unit and integration tests covering every module. Tests are written test-first, matching the same standard Reflecta enforces on generated tests.
+The project has 145 unit and integration tests covering every module. Tests are written test-first, matching the same standard Reflecta enforces on generated tests.
 
 ```bash
 # Run all tests
@@ -253,7 +256,7 @@ Live tests (requiring real API keys) are marked `@pytest.mark.live` and excluded
 
 ## v2 Roadmap
 
-- **Claude Agent SDK escalation** — When Groq fails to repair a test after the max attempts, v2 spawns a Claude subagent equipped with bash and file-editing tools to resolve complex mock setups and import failures. Runs via Claude Pro/Max subscription auth — no extra API key needed.
+- **Claude Agent SDK escalation** ✅ — When Groq fails to repair a test after max attempts, pass `--escalate` to hand the target to Claude Opus, which has `read_file`, `write_test`, and `run_test` tools and runs a bounded iterative loop. Requires `ANTHROPIC_API_KEY`. Install the optional dep with `pip install reflecta[escalation]`.
 - **Mutation testing** — Replace line-coverage delta with a mutation score to catch tests that cover lines but don't actually verify behavior.
 - **Branch-coverage targeting** — Parse missing branch nodes from `coverage json` to target specific code paths, not just uncovered lines.
 - **CI/CD integration** — Run as a GitHub Action; open a pull request with accepted tests automatically.
