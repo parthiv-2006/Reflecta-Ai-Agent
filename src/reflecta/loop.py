@@ -8,6 +8,7 @@ from pathlib import Path
 
 from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
+from reflecta.escalate import escalate_target
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.provider import BudgetExhausted
@@ -103,8 +104,11 @@ def run_loop(
     max_llm_calls: int = 50,
     target_coverage: float | None = None,
     stall_k: int = 3,
+    escalate: bool = False,
+    max_claude_iters: int = 3,
     gemini_client=None,
     groq_client=None,
+    claude_client=None,
 ) -> RunReport:
     """Main orchestration loop.
 
@@ -244,13 +248,36 @@ def run_loop(
                 budget.charge(len(attempts))
 
                 if repaired is None:
-                    target.status = TargetStatus.FAILED
-                    iter_count += 1
-                    stall += 1
-                    logger.info(
-                        "  failed: repair exhausted after %d attempt(s)", len(attempts)
-                    )
-                    continue
+                    if escalate:
+                        logger.info(
+                            "  repair exhausted — escalating to Claude (%d iters)",
+                            max_claude_iters,
+                        )
+                        report.escalations_attempted += 1
+                        repaired = escalate_target(
+                            test,
+                            result,
+                            source,
+                            repo_path=repo_path,
+                            max_iters=max_claude_iters,
+                            claude_client=claude_client,
+                        )
+                        if repaired is None:
+                            target.status = TargetStatus.ESCALATED
+                            iter_count += 1
+                            stall += 1
+                            logger.info("  escalation failed: target marked ESCALATED")
+                            continue
+                        logger.info("  escalation succeeded")
+                        report.escalations_succeeded += 1
+                    else:
+                        target.status = TargetStatus.FAILED
+                        iter_count += 1
+                        stall += 1
+                        logger.info(
+                            "  failed: repair exhausted after %d attempt(s)", len(attempts)
+                        )
+                        continue
 
                 # repair succeeded — treat repaired test as the passing test
                 logger.info("  repaired after %d attempt(s)", len(attempts))

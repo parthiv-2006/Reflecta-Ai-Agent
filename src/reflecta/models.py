@@ -61,5 +61,7 @@ class RunReport:
     tests_kept: int = 0
     tests_discarded: int = 0
     repair_attempts_used: int = 0
+    escalations_attempted: int = 0
+    escalations_succeeded: int = 0
     budget: str = ""
     stop_reason: str = ""
