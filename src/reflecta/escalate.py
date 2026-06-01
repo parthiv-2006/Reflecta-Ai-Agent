@@ -68,19 +68,22 @@ def _tools() -> list[dict]:
 def _timed_create(client, **kwargs) -> object:
     """Call client.messages.create with a hard Python-level timeout.
 
-    concurrent.futures.ThreadPoolExecutor.result(timeout=N) is honoured on
-    Windows unconditionally, unlike httpx/socket timeouts which can stall on
-    TLS connections. The background thread may linger until the socket
-    eventually closes, but the caller always returns within _ROUND_TRIP_TIMEOUT_S.
+    IMPORTANT: do NOT use `with ThreadPoolExecutor(...) as pool` here.
+    The context manager's __exit__ calls shutdown(wait=True), which blocks
+    until the thread finishes — re-introducing the hang we're trying to fix.
+    Instead, call shutdown(wait=False) in a finally block so the stalled
+    thread is abandoned and the caller gets control back immediately.
     """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(client.messages.create, **kwargs)
-        try:
-            return future.result(timeout=_ROUND_TRIP_TIMEOUT_S)
-        except concurrent.futures.TimeoutError as exc:
-            raise TimeoutError(
-                f"Claude API call timed out after {_ROUND_TRIP_TIMEOUT_S:.0f}s"
-            ) from exc
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(client.messages.create, **kwargs)
+    try:
+        return future.result(timeout=_ROUND_TRIP_TIMEOUT_S)
+    except concurrent.futures.TimeoutError as exc:
+        raise TimeoutError(
+            f"Claude API call timed out after {_ROUND_TRIP_TIMEOUT_S:.0f}s"
+        ) from exc
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _execute_tool(
