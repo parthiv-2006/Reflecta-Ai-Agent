@@ -1,7 +1,6 @@
 import os
 
-from groq import Groq
-
+from reflecta.llm import remote
 from reflecta.llm.provider import (
     EmptyResponse,
     RateLimitError,
@@ -14,7 +13,15 @@ MODEL_HARD = "llama-3.3-70b-versatile"
 
 
 def repair(prompt: str, *, model: str = MODEL_FAST, client=None) -> str:
+    # Remote key-broker mode: route repair through the proxy when a reflecta
+    # token is configured and no explicit SDK client was injected for testing.
+    if client is None and remote.remote_enabled():
+        return remote.complete(prompt, task="repair", model=model)
+
     if client is None:
+        # Imported lazily so remote-mode users don't need the provider SDK.
+        from groq import Groq
+
         client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
     def _call():

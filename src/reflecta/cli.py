@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from reflecta.config import load_dotenv, require_api_keys
+from reflecta.config import load_dotenv, require_credentials
 from reflecta.loop import run_loop
 from reflecta.report import read_report, write_report
 
@@ -68,7 +68,7 @@ def run(
         logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
     load_dotenv()
     try:
-        require_api_keys(escalate=escalate)
+        require_credentials(escalate=escalate)
     except EnvironmentError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1)
@@ -142,3 +142,42 @@ def report(
         typer.echo(f"No report found at {report_path}", err=True)
         raise typer.Exit(code=1)
     _print_summary(r)
+
+
+@app.command()
+def login(
+    token: str = typer.Option(
+        None, "--token", help="reflecta API token. Omit to be prompted (hidden)."
+    ),
+    proxy_url: str = typer.Option(
+        None, help="Override the proxy URL (advanced; defaults to the baked-in one)."
+    ),
+) -> None:
+    """Save a reflecta token so runs use the hosted proxy (no provider keys needed).
+
+    Stores credentials in ``~/.reflecta/credentials`` (0600). Once logged in,
+    ``reflecta run`` brokers all Gemini/Groq calls through the proxy on the
+    operator's keys — your code never leaves your machine.
+    """
+    from reflecta.llm import remote
+
+    if not token:
+        token = typer.prompt("reflecta token", hide_input=True)
+    token = token.strip()
+    if not token:
+        typer.echo("No token provided.", err=True)
+        raise typer.Exit(code=1)
+    path = remote.save_credentials(token, proxy_url=proxy_url)
+    typer.echo(f"Logged in. Credentials saved to {path}")
+    typer.echo(f"Proxy: {remote.get_proxy_url()}")
+
+
+@app.command()
+def logout() -> None:
+    """Remove stored reflecta credentials."""
+    from reflecta.llm import remote
+
+    if remote.clear_credentials():
+        typer.echo("Logged out.")
+    else:
+        typer.echo("Not logged in.")

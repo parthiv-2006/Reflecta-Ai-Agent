@@ -47,3 +47,24 @@ def require_api_keys(
                 f"{key} is not set. Add it to your .env file (see .env.example) "
                 "or export it in your shell before running reflecta."
             )
+
+
+def require_credentials(*, escalate: bool = False) -> None:
+    """Preflight credentials, accounting for remote key-broker mode.
+
+    In remote mode (a reflecta token is configured) no provider keys are needed;
+    the proxy holds them. Escalation still runs locally against Claude, so it
+    requires ANTHROPIC_API_KEY regardless of mode. Otherwise fall back to the
+    classic bring-your-own-key check for GEMINI/GROQ.
+    """
+    # Imported here to keep the provider/remote layer out of config import time.
+    from reflecta.llm import remote
+
+    if remote.remote_enabled():
+        if escalate and not os.environ.get("ANTHROPIC_API_KEY"):
+            raise EnvironmentError(
+                "ANTHROPIC_API_KEY is required for --escalate. Escalation runs "
+                "locally against Claude and is not brokered by the reflecta proxy."
+            )
+        return
+    require_api_keys(escalate=escalate)

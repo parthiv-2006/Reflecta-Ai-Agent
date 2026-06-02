@@ -1,7 +1,6 @@
 import os
 
-from google import genai
-
+from reflecta.llm import remote
 from reflecta.llm.provider import (
     EmptyResponse,
     RateLimitError,
@@ -13,7 +12,16 @@ MODEL = "gemini-2.5-flash"
 
 
 def generate(prompt: str, *, client=None) -> str:
+    # Remote key-broker mode: when a reflecta token is configured (and no
+    # explicit SDK client was injected for testing), route through the proxy
+    # instead of calling Gemini directly. The proxy result is already cleaned.
+    if client is None and remote.remote_enabled():
+        return remote.complete(prompt, task="generate", model=MODEL)
+
     if client is None:
+        # Imported lazily so remote-mode users don't need the provider SDK.
+        from google import genai
+
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
     def _call():
