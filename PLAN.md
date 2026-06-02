@@ -140,7 +140,7 @@ and the gate stress test (14) remain open below.
 - [x] **16. README** drafted from `SPEC.md`: what it is, two-key free setup, install, one-command demo on the bundled sample, a GIF of coverage climbing.
 - [x] **17. Package:** clean `pyproject.toml`, publish to PyPI or pipx-from-GitHub. Publish command stays behind manual confirmation.
 - [x] **18. Clean-clone smoke test** with only the two free keys set.
-- [ ] **19. Real-repo demo:** run on 2-3 of your own repos (LeaseGuard is a candidate), capture real before/after numbers for the README.
+- [ ] **19. Real-repo demo:** run on 2-3 of your own repos (LeaseGuard is a candidate), capture real before/after numbers for the README. **[in progress]** — current activity is manual testing on the operator's own repositories in **direct (BYO-key) mode** (see Session status below).
 - [x] **20. Tag `v0.1.0`.**
 
 ---
@@ -185,6 +185,48 @@ remediation plan: [`docs/AUDIT-PRODUCTION-READINESS.md`](docs/AUDIT-PRODUCTION-R
 - Deferred to v2 (perf, no action): per-iteration repo copy cost (S1), full-suite
   measurement cost (S2).
 - Suite after hardening: 155 passing, `ruff` clean.
+
+## Remote key-broker mode (2026-06-02)
+
+Turn reflecta into a product that runs on the **operator's** keys instead of
+each user bringing their own. Architecture + rationale:
+[`docs/REMOTE-MODE.md`](docs/REMOTE-MODE.md); proxy service:
+[`proxy/README.md`](proxy/README.md).
+
+- [x] **Client remote mode.** `src/reflecta/llm/remote.py` routes Gemini/Groq
+  calls through a hosted proxy when a reflecta token is configured
+  (`REFLECTA_TOKEN` env or `~/.reflecta/credentials` via `reflecta login`).
+  Provider SDKs are lazy-imported; user code still runs entirely locally.
+  Precedence: token → remote mode; else provider keys → direct mode; else clear
+  error. New CLI `login`/`logout`; `config.require_credentials` is mode-aware;
+  `httpx` promoted to a core dependency. Tests: `tests/test_remote.py` (+ CLI).
+- [x] **Proxy service.** `proxy/` — standalone FastAPI broker (one
+  `/v1/complete` endpoint + `/healthz`): bearer-token auth, per-token daily
+  quota (429 over cap), model allowlist, prompt-size cap, forwards to providers
+  on the operator's keys. Never receives/runs user code. Dockerfile, README,
+  `.env.example`, 12 tests (providers stubbed).
+- Suite after this work: 171 (package) + 12 (proxy), `ruff` clean. Merged to
+  `main`.
+
+### Operator TODO before remote mode goes live (deferred — see Session status)
+- [ ] Set `DEFAULT_PROXY_URL` in `src/reflecta/llm/remote.py` to the deployed URL.
+- [ ] Stand up the proxy on a host (Render/Fly/Railway) with `GEMINI_API_KEY`,
+      `GROQ_API_KEY`, `REFLECTA_TOKENS` set; use a **paid, no-train** provider tier.
+- [ ] Issue tokens to users; verify end-to-end (`/healthz` + a real run).
+- [ ] Production hardening (per `proxy/README.md`): persistent metering
+      (Redis/DB), token DB with revocation, billing, rate limits, ToS/privacy.
+
+## Session status (2026-06-02)
+
+- Remote key-broker mode is **built and merged** but **not yet deployed** — the
+  operator will set up the proxy later (see Operator TODO above).
+- **Current working mode: direct / BYO-key**, used for **manual testing on the
+  operator's own repositories** (task 19). No proxy needed for this; set
+  `GEMINI_API_KEY` + `GROQ_API_KEY` (or a `.env`) and run
+  `reflecta run --path . -v`. Run reflecta inside the target repo's own venv so
+  its suite runs under coverage; a baseline of `0.0%` means the suite didn't run.
+- Suggested next step once real-repo numbers exist: an **eval harness** (v2
+  backlog) to measure prompt/routing changes objectively.
 
 ## v2 backlog (remaining)
 
