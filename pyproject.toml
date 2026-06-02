@@ -26,6 +26,8 @@ dependencies = [
     "typer>=0.12,<1.0",
     "google-genai>=1.0,<3.0",
     "groq>=0.11,<2.0",
+    # Core (not just escalation): remote key-broker mode calls the proxy over httpx.
+    "httpx>=0.27,<1.0",
 ]
 
 [project.urls]
@@ -41,9 +43,10 @@ dev = [
     "twine",
 ]
 escalation = [
-    # We call the Messages API directly over httpx (the anthropic SDK hangs on
-    # Windows and can't auth OAuth subscription tokens). httpx is already pulled
-    # transitively by core deps; declared here so escalation is self-describing.
+    # Escalation calls the Messages API directly over httpx (the anthropic SDK
+    # hangs on Windows and can't auth OAuth subscription tokens). httpx is now a
+    # core dependency (remote mode needs it), so this extra is a no-op kept for
+    # backwards-compatible install instructions.
     "httpx>=0.27,<1.0",
 ]
 
@@ -55,6 +58,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+# Scope to the package's own tests so the standalone proxy service (proxy/) — a
+# separate project with its own deps and test runner — is never collected here.
+testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "-m", "not live"]
 markers = ["live: requires real API keys — skipped in CI"]
 

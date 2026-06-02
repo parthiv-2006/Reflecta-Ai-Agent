@@ -4,7 +4,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests: 155 passing](https://img.shields.io/badge/tests-155%20passing-brightgreen.svg)](#testing)
+[![Tests: 171 passing](https://img.shields.io/badge/tests-171%20passing-brightgreen.svg)](#testing)
 
 ---
 
@@ -128,6 +128,22 @@ cp .env.example .env
 
 Both keys are free-tier. No credit card required to get started.
 
+### Or: run on someone else's keys (remote mode)
+
+reflecta can run as a hosted product where users don't need their own keys — a
+[proxy](proxy/) you operate holds the provider keys and meters usage, while the
+user's code still runs entirely on their own machine. End users just:
+
+```bash
+reflecta login              # paste a token issued by the operator
+reflecta run --path . -v    # no GEMINI/GROQ keys needed
+reflecta logout             # remove stored credentials
+```
+
+When a reflecta token is configured it takes precedence over local provider
+keys. See [`docs/REMOTE-MODE.md`](docs/REMOTE-MODE.md) for the architecture and
+[`proxy/README.md`](proxy/README.md) for standing up the broker service.
+
 ---
 
 ## Usage
@@ -184,6 +200,16 @@ python -m reflecta clean --path examples/sample_project
 
 Only removes files under `tests/_reflecta/`. Human-written tests are untouched.
 
+### Account (remote mode)
+
+```bash
+reflecta login --token <token>   # store a token (or run bare to be prompted)
+reflecta logout                  # remove stored credentials
+```
+
+Credentials live in `~/.reflecta/credentials` (0600). With a token configured,
+`run` brokers all LLM calls through the proxy and needs no provider keys.
+
 ---
 
 ## Stop conditions
@@ -220,16 +246,19 @@ src/reflecta/
 ├── report.py          # write/read reflecta-report.json
 ├── prompts.py         # Prompt templates (no logic)
 └── llm/
-    ├── provider.py    # Retry wrapper + BudgetExhausted (all LLM calls go here)
-    ├── gemini.py      # Gemini Flash client
-    └── groq.py        # Groq client
+    ├── provider.py    # Retry wrapper + BudgetExhausted/EmptyResponse (all LLM calls go here)
+    ├── remote.py      # Remote key-broker mode: route calls through a hosted proxy
+    ├── gemini.py      # Gemini Flash client (direct) / proxy in remote mode
+    └── groq.py        # Groq client (direct) / proxy in remote mode
+
+proxy/                 # Standalone FastAPI broker service for remote mode (own README/tests)
 ```
 
 ---
 
 ## Testing
 
-The project has 155 unit and integration tests covering every module. Tests are written test-first, matching the same standard Reflecta enforces on generated tests.
+The project has 171 unit and integration tests covering every module (plus 12 for the proxy service under `proxy/`). Tests are written test-first, matching the same standard Reflecta enforces on generated tests.
 
 ```bash
 # Run all tests
