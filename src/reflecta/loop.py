@@ -125,6 +125,7 @@ def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
                 "coverage",
                 "json",
                 f"--data-file={data_file}",
+                "--ignore-errors",
                 "-o",
                 str(json_file),
             ],
@@ -520,6 +521,7 @@ def run_loop(
                                 "coverage",
                                 "json",
                                 f"--data-file={data_file}",
+                                "--ignore-errors",
                                 "-o",
                                 str(json_file),
                             ],
@@ -536,9 +538,11 @@ def run_loop(
                 target.status = TargetStatus.FAILED
                 report.stop_reason = "budget"
                 break
-            except Exception:
+            except Exception as exc:
                 # One bad target must not abort the whole run.
-                logger.exception("target %s failed unexpectedly", target.qualified_name)
+                logger.debug("target %s failed unexpectedly", target.qualified_name, exc_info=True)
+                if ui:
+                    ui.step("Error", ok=False, note=f"{type(exc).__name__}: {exc}")
                 target.status = TargetStatus.FAILED
                 iter_count += 1
                 stall += 1
