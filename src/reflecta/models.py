@@ -61,6 +61,14 @@ class RunResult:
     passed: bool
     traceback: str
     duration: float
+    # How the run ended, used by the loop to route failures. One of:
+    #   ""               — passed
+    #   "test_failure"   — a real assertion/exception failure (repair can help)
+    #   "no_tests"       — pytest collected nothing (exit 5; nothing to repair)
+    #   "collection_error" — import/collection failure (exit 2)
+    #   "import_error"   — collection failed on a missing module (env problem)
+    #   "timeout"        — the subprocess was killed
+    failure_kind: str = ""
 
 
 @dataclass

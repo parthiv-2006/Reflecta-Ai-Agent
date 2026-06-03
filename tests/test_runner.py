@@ -125,6 +125,42 @@ def test_strip_fences_handles_conversational_filler():
     assert extracted == "def test_example():\n    assert 1 == 1"
 
 
+def test_no_tests_collected_is_classified(tmp_path):
+    """An empty test file → pytest exit 5 → failure_kind 'no_tests' so the loop
+    can skip it instead of routing it to (pointless) repair."""
+    test_file = tmp_path / "test_empty.py"
+    test_file.write_text("# nothing here\n")
+
+    result = run_test(test_file, tmp_path)
+
+    assert result.passed is False
+    assert result.failure_kind == "no_tests"
+
+
+def test_missing_import_is_classified_as_import_error(tmp_path):
+    """A test importing a non-existent module → ModuleNotFoundError at
+    collection → failure_kind 'import_error' (an environment problem)."""
+    test_file = tmp_path / "test_badimport.py"
+    test_file.write_text(
+        "import this_module_definitely_does_not_exist_xyz\n"
+        "def test_x():\n    assert True\n"
+    )
+
+    result = run_test(test_file, tmp_path)
+
+    assert result.passed is False
+    assert result.failure_kind == "import_error"
+
+
+def test_real_assertion_failure_is_test_failure(tmp_path):
+    test_file = tmp_path / "test_fail2.py"
+    test_file.write_text("def test_fail():\n    assert 1 == 2\n")
+
+    result = run_test(test_file, tmp_path)
+
+    assert result.failure_kind == "test_failure"
+
+
 def test_run_test_isolated_ignores_heavy_dirs(tmp_path):
     """run_test_isolated must ignore node_modules, build, dist, and .omc during copy."""
     from reflecta.runner import run_test_isolated

@@ -496,6 +496,26 @@ def run_loop(
                         ui.step("Run", ok=result.passed, note="passing" if result.passed else "failed")
 
                 if not result.passed:
+                    # Some failures can never be fixed by feeding a traceback to
+                    # the repair model: no tests were collected (nothing to fix),
+                    # or the target module imports a dependency that is missing
+                    # from this environment. Skip them instead of burning budget.
+                    if result.failure_kind in ("no_tests", "import_error"):
+                        note = (
+                            "no tests collected"
+                            if result.failure_kind == "no_tests"
+                            else "missing dependency in target environment"
+                        )
+                        test.test_file_path.unlink(missing_ok=True)
+                        target.status = TargetStatus.SKIPPED
+                        report.tests_skipped += 1
+                        iter_count += 1
+                        stall += 1
+                        logger.info("  skipped: %s", note)
+                        if ui:
+                            ui.step("Skipped", ok=False, note=note)
+                        continue
+
                     if budget.exhausted():
                         test.test_file_path.unlink(missing_ok=True)
                         target.status = TargetStatus.FAILED

@@ -30,6 +30,23 @@ def child_env(repo_path: Path | None = None) -> dict[str, str]:
     return env
 
 
+def _classify_failure(returncode: int, traceback: str) -> str:
+    """Map a non-zero pytest exit code + output to a failure kind.
+
+    pytest exit codes: 1=tests failed, 2=collection/internal error, 5=no tests
+    collected. A missing module at collection (``ModuleNotFoundError`` /
+    ``ImportError``) is an environment problem repair can never fix, so it is
+    split out from ordinary collection errors and from genuine test failures.
+    """
+    if returncode == 5:
+        return "no_tests"
+    if "ModuleNotFoundError" in traceback or "ImportError" in traceback:
+        return "import_error"
+    if returncode == 2:
+        return "collection_error"
+    return "test_failure"
+
+
 def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult:
     start = time.monotonic()
     proc = subprocess.Popen(
@@ -45,12 +62,17 @@ def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult
         duration = time.monotonic() - start
         passed = proc.returncode == 0
         tb = "" if passed else (stdout + stderr).strip()
-        return RunResult(passed=passed, traceback=tb, duration=duration)
+        kind = "" if passed else _classify_failure(proc.returncode, tb)
+        return RunResult(
+            passed=passed, traceback=tb, duration=duration, failure_kind=kind
+        )
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.communicate()
         duration = time.monotonic() - start
-        return RunResult(passed=False, traceback="timeout", duration=duration)
+        return RunResult(
+            passed=False, traceback="timeout", duration=duration, failure_kind="timeout"
+        )
 
 
 def run_test_isolated(
