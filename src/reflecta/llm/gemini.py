@@ -16,11 +16,10 @@ def generate(prompt: str, *, client=None) -> str:
             response = client.models.generate_content(model=MODEL, contents=prompt)
             return response.text
         except Exception as exc:
-            if (
-                "429" in str(exc)
-                or "quota" in str(exc).lower()
-                or "rate" in str(exc).lower()
-            ):
+            s = str(exc).lower()
+            if "429" in s or "quota" in s or "rate" in s:
+                raise RateLimitError(str(exc)) from exc
+            if "503" in s or "unavailable" in s or "overloaded" in s:
                 raise RateLimitError(str(exc)) from exc
             raise
 

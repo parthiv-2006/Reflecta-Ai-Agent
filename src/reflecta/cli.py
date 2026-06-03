@@ -39,7 +39,11 @@ def run(
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
     if verbose:
-        logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s", force=True)
+    else:
+        # Suppress the default last-resort handler so raw tracebacks don't
+        # bleed into user-facing output when a target fails unexpectedly.
+        logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
     load_dotenv()
     try:
         require_api_keys(escalate=escalate)
