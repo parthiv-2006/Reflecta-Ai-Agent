@@ -114,7 +114,10 @@ def generate_test(
     test_file_path = reflecta_dir / f"test_reflecta_{module_name}_{counter}.py"
 
     reflecta_dir.mkdir(parents=True, exist_ok=True)
-    test_file_path.write_text(source_code)
+    # encoding="utf-8" is required: generated tests routinely contain non-ASCII
+    # (e.g. sample strings for text-processing functions). Without it, write_text
+    # uses the platform default (cp1252 on Windows) and raises UnicodeEncodeError.
+    test_file_path.write_text(source_code, encoding="utf-8")
 
     return GeneratedTest(
         target=target,

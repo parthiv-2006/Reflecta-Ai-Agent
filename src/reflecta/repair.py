@@ -74,7 +74,9 @@ def repair_test(
         prompt = build_repair_prompt(relevant_source, test.source_code, current_traceback)
         patched_source = groq.repair(prompt, model=model)
 
-        test.test_file_path.write_text(patched_source)
+        # utf-8: patched tests may contain non-ASCII; the platform default
+        # (cp1252 on Windows) would raise UnicodeEncodeError. Matches generate.py.
+        test.test_file_path.write_text(patched_source, encoding="utf-8")
 
         run_result = run_test_isolated(
             test.test_file_path, repo_path, python_exe=python_exe

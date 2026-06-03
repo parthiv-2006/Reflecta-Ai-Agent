@@ -179,6 +179,27 @@ def test_structural_error_set_when_all_drafts_broken(monkeypatch, tmp_path):
     assert "mock" in result.structural_error
 
 
+def test_generated_file_written_as_utf8(monkeypatch, tmp_path):
+    """Regression: generated tests often contain non-ASCII (sample strings for
+    text-processing code). The file must be written as utf-8, not the platform
+    default (cp1252 on Windows raises UnicodeEncodeError)."""
+    non_ascii = (
+        "from calc import add\n\n"
+        "def test_unicode():\n"
+        "    # café — naïve — 你好 — ‘smart quotes’\n"
+        "    assert add(1, 2) == 3\n"
+    )
+    monkeypatch.setattr(
+        "reflecta.generate.gemini.generate", lambda *a, **kw: non_ascii
+    )
+    target = _make_target(tmp_path / "calc.py", [2])
+    result = generate_test(
+        target, "def add(a, b): return a + b", "", repo_path=tmp_path
+    )
+    assert result.structural_error is None
+    assert result.test_file_path.read_text(encoding="utf-8") == non_ascii
+
+
 def test_module_import_path_flat_module(tmp_path):
     from reflecta.generate import module_import_path
 
