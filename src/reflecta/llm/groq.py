@@ -33,7 +33,9 @@ def repair(prompt: str, *, model: str = MODEL_FAST, client=None) -> str:
             return resp.choices[0].message.content
         except Exception as exc:
             if "429" in str(exc) or "rate" in str(exc).lower():
-                raise RateLimitError(str(exc)) from exc
+                raise RateLimitError(
+                    str(exc), provider=f"Groq (test repair, {model})"
+                ) from exc
             raise
 
     raw = call_with_retry(_call)

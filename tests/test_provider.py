@@ -7,8 +7,35 @@ from reflecta.llm.provider import (
     EmptyResponse,
     RateLimitError,
     call_with_retry,
+    explain_rate_limit,
     strip_fences,
 )
+
+
+def test_explain_rate_limit_distinguishes_daily_and_minute():
+    assert "DAILY" in explain_rate_limit("Quota exceeded: requests per day")
+    assert "PER-MINUTE" in explain_rate_limit("rate limit: requests per minute (RPM)")
+    # Unknown phrasing falls back to the general hint, never crashes.
+    assert explain_rate_limit("429 Too Many Requests")
+
+
+def test_budget_exhausted_message_names_provider_and_cause(monkeypatch):
+    monkeypatch.setattr("reflecta.llm.provider.time.sleep", lambda s: None)
+
+    def always():
+        raise RateLimitError(
+            "RESOURCE_EXHAUSTED: requests per day exceeded",
+            provider="Gemini (test generation)",
+        )
+
+    with pytest.raises(BudgetExhausted) as ei:
+        call_with_retry(always, max_retries=2, base_delay=1.0)
+
+    msg = str(ei.value)
+    assert "Gemini (test generation)" in msg  # which provider
+    assert "429" in msg  # what kind of failure
+    assert "DAILY" in msg  # actionable hint
+    assert "requests per day" in msg  # raw API text echoed
 
 
 def test_strip_fences_removes_language_fence():

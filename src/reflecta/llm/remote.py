@@ -153,7 +153,10 @@ def complete(
     def _call():
         resp = http_client.post(url, json=body, headers=headers)
         if resp.status_code == 429:
-            raise RateLimitError(f"reflecta proxy quota exceeded: {resp.text[:200]}")
+            raise RateLimitError(
+                f"reflecta proxy quota exceeded: {resp.text[:200]}",
+                provider="reflecta proxy (remote key-broker)",
+            )
         if resp.status_code != 200:
             raise RuntimeError(
                 f"reflecta proxy error {resp.status_code}: {resp.text[:200]}"

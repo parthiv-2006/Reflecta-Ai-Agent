@@ -2,6 +2,7 @@ import ast
 import contextlib
 import json
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -27,6 +28,16 @@ logger = logging.getLogger("reflecta")
 
 
 COVERAGE_DIR = ".reflecta"
+
+
+def _missing_module_name(traceback: str) -> str | None:
+    """Pull the missing module name out of a ModuleNotFoundError/ImportError
+    traceback so the loop can name the exact dependency that needs installing."""
+    m = re.search(r"No module named ['\"]([^'\"]+)['\"]", traceback)
+    if m:
+        return m.group(1)
+    m = re.search(r"cannot import name ['\"]([^'\"]+)['\"]", traceback)
+    return m.group(1) if m else None
 
 
 _SKIP_DIRS = frozenset(
@@ -568,11 +579,21 @@ def run_loop(
                     # or the target module imports a dependency that is missing
                     # from this environment. Skip them instead of burning budget.
                     if result.failure_kind in ("no_tests", "import_error"):
-                        note = (
-                            "no tests collected"
-                            if result.failure_kind == "no_tests"
-                            else "missing dependency in target environment"
-                        )
+                        if result.failure_kind == "no_tests":
+                            note = "no tests were collected from the generated file"
+                        else:
+                            missing_mod = _missing_module_name(result.traceback)
+                            if missing_mod:
+                                note = (
+                                    f"target needs '{missing_mod}', which is not "
+                                    f"installed under {interpreter}. Install it there "
+                                    f"or pass --python <venv-python>."
+                                )
+                            else:
+                                note = (
+                                    f"a dependency is missing under {interpreter}; "
+                                    f"install the target's deps or pass --python."
+                                )
                         test.test_file_path.unlink(missing_ok=True)
                         target.status = TargetStatus.SKIPPED
                         report.tests_skipped += 1
@@ -601,13 +622,14 @@ def run_loop(
                                 groq_client=groq_client,
                                 python_exe=interpreter,
                             )
-                    except BudgetExhausted:
+                    except BudgetExhausted as exc:
                         logger.warning(
-                            "repair provider exhausted on %s; skipping target",
+                            "repair provider exhausted on %s: %s",
                             target.qualified_name,
+                            exc,
                         )
                         if ui:
-                            ui.print_repair_exhausted()
+                            ui.print_budget_exhausted(str(exc), stage="repair")
                         test.test_file_path.unlink(missing_ok=True)
                         target.status = TargetStatus.FAILED
                         iter_count += 1
@@ -713,12 +735,16 @@ def run_loop(
                         ui.print_target_discarded(coverage_before, coverage_after)
                     report.tests_discarded += 1
                     stall += 1
-            except BudgetExhausted:
+            except BudgetExhausted as exc:
                 # Free tier is exhausted (429 ceiling). Stop cleanly so the report
                 # is still written.
                 logger.warning(
-                    "provider budget exhausted on target %s", target.qualified_name
+                    "LLM quota/rate limit exhausted on target %s: %s",
+                    target.qualified_name,
+                    exc,
                 )
+                if ui:
+                    ui.print_budget_exhausted(str(exc), stage="generation")
                 target.status = TargetStatus.FAILED
                 report.stop_reason = "budget"
                 break

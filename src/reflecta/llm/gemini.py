@@ -31,9 +31,13 @@ def generate(prompt: str, *, client=None) -> str:
         except Exception as exc:
             s = str(exc).lower()
             if "429" in s or "quota" in s or "rate" in s:
-                raise RateLimitError(str(exc)) from exc
+                raise RateLimitError(
+                    str(exc), provider="Gemini (test generation)"
+                ) from exc
             if "503" in s or "unavailable" in s or "overloaded" in s:
-                raise RateLimitError(str(exc)) from exc
+                raise RateLimitError(
+                    str(exc), provider="Gemini (test generation, 503 overloaded)"
+                ) from exc
             raise
 
     raw = call_with_retry(_call)

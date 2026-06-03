@@ -35,7 +35,17 @@ def strip_fences(text: str) -> str:
 
 
 class RateLimitError(Exception):
-    """Raised by provider clients when the API returns 429."""
+    """Raised by provider clients when the API returns 429.
+
+    Carries the human ``provider`` label (e.g. "Gemini (test generation)") and
+    the raw API message so the loop can tell the user exactly who rejected the
+    call and why, instead of a generic "budget exhausted".
+    """
+
+    def __init__(self, message: str, *, provider: str = "the LLM provider") -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.raw = message
 
 
 class BudgetExhausted(Exception):
@@ -49,11 +59,40 @@ class EmptyResponse(Exception):
     on ``None.strip()``."""
 
 
+def explain_rate_limit(message: str) -> str:
+    """Turn a raw 429 message into an actionable, plain-English hint."""
+    low = message.lower()
+    if any(k in low for k in ("per day", "perday", "requests per day", "daily", "rpd")):
+        return (
+            "This is a DAILY quota cap. It resets at midnight Pacific (Google) "
+            "or 24h after first use (Groq) — retry later today/tomorrow."
+        )
+    if any(k in low for k in ("per minute", "per-minute", "rpm", "tpm", "tokens per minute")):
+        return "This is a PER-MINUTE rate limit. Wait ~60 seconds and re-run."
+    return (
+        "Free tiers cap both per-minute and per-day usage. Wait ~60s and re-run; "
+        "if it keeps happening you've hit the daily cap — retry later."
+    )
+
+
 def call_with_retry(fn, *args, max_retries: int = 5, base_delay: float = 1.0, **kwargs):
+    last: RateLimitError | None = None
     for attempt in range(max_retries + 1):
         try:
             return fn(*args, **kwargs)
-        except RateLimitError:
+        except RateLimitError as exc:
+            last = exc
             if attempt == max_retries:
-                raise BudgetExhausted(f"rate-limited after {max_retries} retries")
+                provider = getattr(exc, "provider", "the LLM provider")
+                waited = int(base_delay * (2 ** (max_retries) - 1))
+                raw = (getattr(exc, "raw", "") or str(exc)).strip().replace("\n", " ")
+                if len(raw) > 300:
+                    raw = raw[:300] + "…"
+                raise BudgetExhausted(
+                    f"{provider} returned HTTP 429 (rate limited) on every attempt "
+                    f"({max_retries + 1} tries over ~{waited}s of backoff). "
+                    f"{explain_rate_limit(raw)} | API said: {raw}"
+                ) from exc
             time.sleep(base_delay * (2**attempt))
+    # Unreachable (loop either returns or raises), but keeps type-checkers happy.
+    raise BudgetExhausted(str(last) if last else "rate limited")

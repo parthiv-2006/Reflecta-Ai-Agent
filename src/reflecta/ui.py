@@ -126,6 +126,21 @@ class ReflectaUI:
             "        [yellow]Repair budget exhausted[/] — [dim]SKIPPED[/]"
         )
 
+    def print_budget_exhausted(self, detail: str, *, stage: str = "") -> None:
+        """Explain a 429/quota stop in plain English with a remedy.
+
+        ``detail`` is the BudgetExhausted message (provider + raw API text +
+        per-minute-vs-daily hint); ``stage`` is "generation" or "repair".
+        """
+        where = f" during {stage}" if stage else ""
+        self._c.print()
+        self._c.print(f"  [red]✗ LLM quota / rate limit hit{where}[/]")
+        self._c.print(f"  [dim]{detail}[/]")
+        self._c.print(
+            "  [dim]Nothing is broken in reflecta — this is the provider's free-tier "
+            "limit. Re-run later (smaller --max-iters), or use --python / a paid key.[/]"
+        )
+
     def print_escalating(self, max_iters: int) -> None:
         self._c.print(
             f"        [dim]{'Escalating':<{_COL}}[/]"
@@ -178,6 +193,17 @@ class ReflectaUI:
                 f"attempted {report.escalations_attempted}"
                 f"  [dim]·[/]  succeeded [green]{report.escalations_succeeded}[/]"
             )
-        self._c.print(f"  [bold]Stop reason[/]  {report.stop_reason}")
+        stop_explain = {
+            "budget": "budget — LLM quota / rate limit hit (free tier). Wait and re-run.",
+            "max_iters": "max_iters — hit the per-run target cap (raise --max-iters for more).",
+            "stalled": "stalled — several targets in a row did not raise coverage.",
+            "target_reached": "target_reached — requested coverage met.",
+            "no_targets": "no_targets — no coverage gaps found in named functions.",
+            "exhausted": "exhausted — all targets processed.",
+        }
+        self._c.print(
+            f"  [bold]Stop reason[/]  "
+            f"{stop_explain.get(report.stop_reason, report.stop_reason)}"
+        )
         self._c.print(f"  [bold]Report[/]       [dim]{report_path}[/]")
         self._c.print()
