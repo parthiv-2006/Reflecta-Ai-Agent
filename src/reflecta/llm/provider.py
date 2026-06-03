@@ -1,3 +1,4 @@
+import re
 import time
 
 
@@ -7,12 +8,18 @@ def strip_fences(text: str) -> str:
     Shared by the Gemini and Groq clients.
     """
     text = text.strip()
+    # Search for fenced code blocks anywhere in the text
+    match = re.search(r"```(?:python)?\n(.*?)\n```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+
     if text.startswith("```"):
         lines = text.splitlines()[1:]
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         text = "\n".join(lines)
     return text.strip()
+
 
 
 class RateLimitError(Exception):

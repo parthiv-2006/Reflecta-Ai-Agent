@@ -44,6 +44,7 @@ def build_generation_prompt(
         "- Output ONLY valid Python code. No markdown fences. No explanation.\n"
         "- The first line must be an import statement.\n"
         f"{target_hint}"
+        "- For mocking, always use standard library `unittest.mock` (e.g. `mock.patch`, `mock.MagicMock`). Do NOT use the third-party `mocker` fixture from `pytest-mock` since it is not installed.\n"
         "- Write at least two test functions that exercise the target with real assertions.\n"
         "- Do NOT use `assert True` or trivially-true assertions.\n\n"
         f"Source:\n{source}\n\n"
@@ -51,3 +52,4 @@ def build_generation_prompt(
         f"Target to cover: `{qualified_name}`\n"
         f"Missing line numbers: {missing_lines}\n"
     )
+

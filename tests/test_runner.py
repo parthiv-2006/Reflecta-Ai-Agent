@@ -86,3 +86,70 @@ def test_timeout_kills_process(tmp_path):
 
     assert result.passed is False
     assert "timeout" in result.traceback
+
+
+def test_child_env_injects_pythonpath(tmp_path):
+    """child_env(repo_path) must inject PYTHONPATH with candidate source directories."""
+    from reflecta.runner import child_env
+    # Create candidate source directories in the temp repo
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "foo.py").write_text("pass\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "bar.py").write_text("pass\n")
+    # A skipped directory should not be in the candidate sources
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "baz.py").write_text("pass\n")
+
+    env = child_env(tmp_path)
+    pythonpath = env.get("PYTHONPATH", "")
+
+    # PYTHONPATH must contain scripts/ and src/ and the root path, but not node_modules/
+    assert str(tmp_path / "scripts") in pythonpath
+    assert str(tmp_path / "src") in pythonpath
+    assert str(tmp_path) in pythonpath
+    assert str(tmp_path / "node_modules") not in pythonpath
+
+
+def test_strip_fences_handles_conversational_filler():
+    """strip_fences must extract Python code block even when surrounded by conversational filler."""
+    from reflecta.llm.provider import strip_fences
+    response = (
+        "Here is the code you requested:\n"
+        "```python\n"
+        "def test_example():\n"
+        "    assert 1 == 1\n"
+        "```\n"
+        "Hope this helps!"
+    )
+    extracted = strip_fences(response)
+    assert extracted == "def test_example():\n    assert 1 == 1"
+
+
+def test_run_test_isolated_ignores_heavy_dirs(tmp_path):
+    """run_test_isolated must ignore node_modules, build, dist, and .omc during copy."""
+    from reflecta.runner import run_test_isolated
+    test_file = tmp_path / "tests" / "_reflecta" / "test_ok.py"
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.write_text("def test_ok(): assert True")
+
+    fake_proc = MagicMock()
+    fake_proc.communicate.return_value = ("", "")
+    fake_proc.returncode = 0
+
+    with (
+        patch("reflecta.runner.shutil.copytree") as mock_copytree,
+        patch("reflecta.runner.subprocess.Popen", return_value=fake_proc),
+    ):
+        run_test_isolated(test_file, tmp_path)
+
+    assert mock_copytree.called
+    ignore_func = mock_copytree.call_args.kwargs.get("ignore")
+    assert ignore_func is not None
+
+    ignored_names = ignore_func("dummy_dir", ["node_modules", "build", "dist", ".omc", "src"])
+    assert "node_modules" in ignored_names
+    assert "build" in ignored_names
+    assert "dist" in ignored_names
+    assert ".omc" in ignored_names
+    assert "src" not in ignored_names
+

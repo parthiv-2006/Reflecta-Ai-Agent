@@ -24,6 +24,7 @@ dependencies = [
     "typer",
     "google-genai",
     "groq",
+    "rich>=13.0",
 ]
 
 [project.urls]

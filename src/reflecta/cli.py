@@ -7,23 +7,9 @@ import typer
 from reflecta.config import load_dotenv, require_api_keys
 from reflecta.loop import run_loop
 from reflecta.report import read_report, write_report
+from reflecta.ui import ReflectaUI
 
 app = typer.Typer(help="reflecta — auto-generate coverage-raising pytest tests.")
-
-
-def _print_summary(report) -> None:
-    delta = report.coverage_after - report.coverage_before
-    sign = "+" if delta >= 0 else ""
-    typer.echo(
-        f"Coverage: {report.coverage_before:.1f}% → {report.coverage_after:.1f}%"
-        f"  ({sign}{delta:.1f} pp)"
-    )
-    typer.echo(
-        f"Tests kept: {report.tests_kept}"
-        f" | discarded: {report.tests_discarded}"
-        f" | repairs: {report.repair_attempts_used}"
-    )
-    typer.echo(f"Stop reason: {report.stop_reason}")
 
 
 @app.command()
@@ -53,13 +39,19 @@ def run(
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
     if verbose:
-        logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s", force=True)
+    else:
+        # Suppress the default last-resort handler so raw tracebacks don't
+        # bleed into user-facing output when a target fails unexpectedly.
+        logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
     load_dotenv()
     try:
         require_api_keys(escalate=escalate)
     except EnvironmentError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1)
+    ui = ReflectaUI()
+    ui.banner()
     report = run_loop(
         path,
         max_iters=max_iters,
@@ -69,11 +61,11 @@ def run(
         stall_k=stall_k,
         escalate=escalate,
         max_claude_iters=max_claude_iters,
+        ui=ui,
     )
     report_path = path / "reflecta-report.json"
     write_report(report, report_path)
-    _print_summary(report)
-    typer.echo(f"Report written to {report_path}")
+    ui.summary(report, report_path)
 
 
 @app.command()
@@ -112,4 +104,4 @@ def report(
     except FileNotFoundError:
         typer.echo(f"No report found at {report_path}", err=True)
         raise typer.Exit(code=1)
-    _print_summary(r)
+    ReflectaUI().summary(r, report_path)
