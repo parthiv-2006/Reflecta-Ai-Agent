@@ -7,6 +7,7 @@ all output — existing tests do this automatically.
 from __future__ import annotations
 
 import contextlib
+import sys
 from pathlib import Path
 from typing import Generator
 
@@ -24,7 +25,15 @@ class ReflectaUI:
     """Structured, coloured progress output using Rich."""
 
     def __init__(self, quiet: bool = False) -> None:
-        self._c = Console(highlight=False, quiet=quiet)
+        # On Windows, stdout defaults to cp1252 which can't encode box-drawing
+        # chars (Rule ─, ✓, ✗, →). Reconfigure to UTF-8 so Rich output never
+        # crashes. legacy_windows=False disables the Win32 legacy renderer.
+        if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+            try:
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+        self._c = Console(highlight=False, quiet=quiet, legacy_windows=False)
         self._max_iters: int = 0
 
     # ── top-level phases ────────────────────────────────────────────────────
