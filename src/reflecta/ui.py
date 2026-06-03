@@ -65,6 +65,17 @@ class ReflectaUI:
                 f" across {n_files} file{'s' if n_files != 1 else ''}"
             )
 
+    def print_preflight_warning(self, missing: list[str], interpreter: str) -> None:
+        self._c.print()
+        self._c.print(
+            f"  [yellow]⚠ Missing dependencies[/] under [dim]{interpreter}[/]:"
+            f"  [bold]{', '.join(missing)}[/]"
+        )
+        self._c.print(
+            "  [dim]Install them in that environment, or pass "
+            "--python <venv-python>. Tests importing these will be skipped.[/]"
+        )
+
     def print_loop_header(self, max_iters: int) -> None:
         self._max_iters = max_iters
         self._c.print()

@@ -57,6 +57,7 @@ def repair_test(
     repo_path: Path,
     max_repairs: int = 2,
     groq_client=None,
+    python_exe: str | None = None,
 ) -> tuple[GeneratedTest | None, list[RepairAttempt]]:
     """groq_client may be the real groq module or a test double with .repair(prompt, model=).
 
@@ -75,7 +76,9 @@ def repair_test(
 
         test.test_file_path.write_text(patched_source)
 
-        run_result = run_test_isolated(test.test_file_path, repo_path)
+        run_result = run_test_isolated(
+            test.test_file_path, repo_path, python_exe=python_exe
+        )
 
         if run_result.passed:
             repaired = GeneratedTest(

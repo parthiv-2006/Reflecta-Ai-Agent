@@ -4,7 +4,6 @@ import json
 import logging
 import shutil
 import subprocess
-import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -82,7 +81,9 @@ def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
     return d / ".coverage", d / "coverage.json"
 
 
-def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
+def measure_coverage(
+    repo_path: Path, test_file: Path | None = None, python_exe: str | None = None
+) -> float:
     """Run the test suite under coverage and return percent_covered.
 
     Coverage data and the json report are written to ``.reflecta/`` via an
@@ -91,9 +92,12 @@ def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
     When ``test_file`` is provided, runs coverage *only* on that test file and
     appends to the existing coverage data-file. Otherwise, runs a full suite baseline.
     """
+    from reflecta.environment import detect_interpreter
+
     repo_path = Path(repo_path).resolve()
     data_file, json_file = coverage_paths(repo_path)
     env = child_env(repo_path)
+    sys_executable = python_exe or detect_interpreter(repo_path)
 
     sources = _source_dirs(repo_path)
     source_flags = [f"--source={s}" for s in sources]
@@ -102,7 +106,7 @@ def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
         # Incremental run: run coverage only on the new test file and append to the existing data_file.
         subprocess.run(
             [
-                sys.executable,
+                sys_executable,
                 "-m",
                 "coverage",
                 "run",
@@ -121,7 +125,7 @@ def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
         )
         subprocess.run(
             [
-                sys.executable,
+                sys_executable,
                 "-m",
                 "coverage",
                 "json",
@@ -148,7 +152,7 @@ def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
     try:
         subprocess.run(
             [
-                sys.executable,
+                sys_executable,
                 "-m",
                 "coverage",
                 "run",
@@ -162,7 +166,7 @@ def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
         )
         subprocess.run(
             [
-                sys.executable,
+                sys_executable,
                 "-m",
                 "coverage",
                 "run",
@@ -180,7 +184,7 @@ def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
         )
         subprocess.run(
             [
-                sys.executable,
+                sys_executable,
                 "-m",
                 "coverage",
                 "json",
@@ -224,7 +228,9 @@ def _safe_measure_coverage(repo_path: Path, test_file: Path | None = None) -> fl
             return measure_coverage(repo_path)
 
 
-def measure_coverage_real(repo_path: Path) -> tuple[float, bool]:
+def measure_coverage_real(
+    repo_path: Path, python_exe: str | None = None
+) -> tuple[float, bool]:
     """Baseline measurement, run in-place in the real tree.
 
     Returns (percent_covered, suite_passed). Running in-place so the resulting
@@ -232,9 +238,12 @@ def measure_coverage_real(repo_path: Path) -> tuple[float, bool]:
     Coverage artifacts land under .reflecta/ so the repo's own artifacts are
     untouched.
     """
+    from reflecta.environment import detect_interpreter
+
     repo_path = Path(repo_path).resolve()
     data_file, json_file = coverage_paths(repo_path)
     env = child_env(repo_path)
+    sys_executable = python_exe or detect_interpreter(repo_path)
     sources = _source_dirs(repo_path)
     source_flags = [f"--source={s}" for s in sources]
 
@@ -242,17 +251,17 @@ def measure_coverage_real(repo_path: Path) -> tuple[float, bool]:
     seed_file.write_text("pass\n", encoding="utf-8")
     try:
         subprocess.run(
-            [sys.executable, "-m", "coverage", "run", f"--data-file={data_file}",
+            [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
              *source_flags, str(seed_file)],
             cwd=repo_path, capture_output=True, env=env,
         )
         proc = subprocess.run(
-            [sys.executable, "-m", "coverage", "run", f"--data-file={data_file}",
+            [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
              *source_flags, "--append", "-m", "pytest", "--tb=no", "-q"],
             cwd=repo_path, capture_output=True, env=env,
         )
         subprocess.run(
-            [sys.executable, "-m", "coverage", "json", f"--data-file={data_file}",
+            [sys_executable, "-m", "coverage", "json", f"--data-file={data_file}",
              "--ignore-errors", f"--omit={seed_file.name}", "-o", str(json_file)],
             cwd=repo_path, capture_output=True, env=env,
         )
@@ -266,7 +275,7 @@ def measure_coverage_real(repo_path: Path) -> tuple[float, bool]:
 
 
 def measure_coverage_isolated(
-    repo_path: Path, *, timeout_s: int = 300
+    repo_path: Path, *, timeout_s: int = 300, python_exe: str | None = None
 ) -> tuple[float, bool]:
     """Run the full suite in a disposable copy; return (percent_covered, passed).
 
@@ -274,7 +283,11 @@ def measure_coverage_isolated(
     or hanging test cannot corrupt the real working tree. Returns (0.0, False)
     on timeout so a hung suite is never mistaken for a coverage gain.
     """
+    from reflecta.environment import detect_interpreter
+
     repo_path = Path(repo_path).resolve()
+    # Detect on the real repo before copying — the copy omits the virtualenv.
+    sys_executable = python_exe or detect_interpreter(repo_path)
     tmp_root = Path(tempfile.mkdtemp(prefix="reflecta_cov_"))
     try:
         tmp_repo = tmp_root / "repo"
@@ -292,7 +305,7 @@ def measure_coverage_isolated(
         env = child_env(tmp_repo)
         try:
             proc = subprocess.run(
-                [sys.executable, "-m", "coverage", "run", f"--data-file={data_file}",
+                [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
                  "-m", "pytest", "--tb=no", "-q"],
                 cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
             )
@@ -300,7 +313,7 @@ def measure_coverage_isolated(
             return 0.0, False
         passed = proc.returncode == 0
         subprocess.run(
-            [sys.executable, "-m", "coverage", "json", f"--data-file={data_file}",
+            [sys_executable, "-m", "coverage", "json", f"--data-file={data_file}",
              "--ignore-errors", "-o", str(json_file)],
             cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
         )
@@ -342,6 +355,7 @@ def run_loop(
     gemini_client=None,
     groq_client=None,
     claude_client=None,
+    python_exe: str | None = None,
     ui: "ReflectaUI | None" = None,
 ) -> RunReport:
     """Main orchestration loop.
@@ -350,12 +364,25 @@ def run_loop(
     → keep/discard. Repeats until one of the four SPEC stop conditions fires:
     target coverage reached, max_iters hit, coverage stalled across ``stall_k``
     consecutive targets, or the LLM budget is depleted.
+
+    ``python_exe`` overrides the interpreter used to run generated tests; when
+    None it is auto-detected from the target repo's virtualenv (falling back to
+    Reflecta's own interpreter).
     """
+    from reflecta.environment import (
+        collect_third_party_roots,
+        detect_interpreter,
+        preflight_imports,
+    )
+
     repo_path = Path(repo_path).resolve()
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
+    interpreter = python_exe or detect_interpreter(repo_path)
 
     with (ui.spin("Measuring baseline coverage") if ui else contextlib.nullcontext()):
-        coverage_before, baseline_suite_passed = measure_coverage_real(repo_path)
+        coverage_before, baseline_suite_passed = measure_coverage_real(
+            repo_path, python_exe=interpreter
+        )
 
     _, coverage_json_path = coverage_paths(repo_path)
     if coverage_json_path.exists():
@@ -375,6 +402,28 @@ def run_loop(
     if ui:
         n_target_files = len({t.file_path for t in targets})
         ui.print_targets_found(len(targets), n_target_files)
+
+    # Preflight: warn if the target's third-party imports are not resolvable
+    # under the chosen interpreter. find_spec never executes module code, so
+    # this is safe even for modules that do I/O at import. A missing dependency
+    # here means every test importing that module would fail with
+    # ModuleNotFoundError, so we surface it once, clearly, instead of letting it
+    # silently sink every target.
+    if targets:
+        target_files = sorted({t.file_path for t in targets})
+        missing = preflight_imports(
+            interpreter, collect_third_party_roots(target_files, repo_path)
+        )
+        if missing:
+            msg = (
+                f"Missing dependencies under {interpreter}: "
+                f"{', '.join(missing)}. Install them in that environment "
+                f"(or pass --python <path-to-venv-python>); tests importing "
+                f"these modules will be skipped."
+            )
+            logger.warning(msg)
+            if ui:
+                ui.print_preflight_warning(missing, interpreter)
 
     if not targets:
         report = RunReport(
@@ -491,7 +540,9 @@ def run_loop(
                         logger.info("  discarded: failed assertion gate")
                         continue
                     with (ui.spin("Run") if ui else contextlib.run_in_executor if False else contextlib.nullcontext()):
-                        result = run_test_isolated(test.test_file_path, repo_path)
+                        result = run_test_isolated(
+                            test.test_file_path, repo_path, python_exe=interpreter
+                        )
                     if ui:
                         ui.step("Run", ok=result.passed, note="passing" if result.passed else "failed")
 
@@ -532,6 +583,7 @@ def run_loop(
                                 repo_path=repo_path,
                                 max_repairs=max_repairs,
                                 groq_client=groq_client,
+                                python_exe=interpreter,
                             )
                     except BudgetExhausted:
                         logger.warning(
@@ -606,7 +658,9 @@ def run_loop(
                     test = repaired
 
                 with (ui.spin("Measuring delta") if ui else contextlib.nullcontext()):
-                    coverage_after, suite_passed = measure_coverage_isolated(repo_path)
+                    coverage_after, suite_passed = measure_coverage_isolated(
+                        repo_path, python_exe=interpreter
+                    )
 
                 # H2: a test that passes in isolation but breaks the full suite
                 # indicates a fixture/ordering/state collision. Discard it unless

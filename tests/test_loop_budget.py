@@ -157,7 +157,7 @@ def test_budget_exhausted_stops_loop(tmp_path):
         call_count["n"] += 1
         return _good_test(target, tmp_path)
 
-    def fake_run(test_file, repo_path, timeout_s=30):
+    def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
         return RunResult(passed=True, traceback="", duration=0.1)
 
     coverage_seq = iter([50.0, 60.0, 70.0, 80.0])
@@ -298,7 +298,7 @@ def test_target_coverage_reached_stops_loop(tmp_path):
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _good_test(target, tmp_path)
 
-    def fake_run(test_file, repo_path, timeout_s=30):
+    def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
         return RunResult(passed=True, traceback="", duration=0.1)
 
     # initial 50 → first keep raises to 60, which meets target 55
@@ -334,7 +334,7 @@ def test_coverage_stall_stops_loop(tmp_path):
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _good_test(target, tmp_path)
 
-    def fake_run(test_file, repo_path, timeout_s=30):
+    def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
         return RunResult(passed=True, traceback="", duration=0.1)
 
     # coverage never rises → every target discarded by the delta gate
@@ -368,7 +368,7 @@ def test_suite_breaking_test_discarded_even_if_coverage_rises(tmp_path):
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _good_test(target, tmp_path)
 
-    def fake_run(test_file, repo_path, timeout_s=30):
+    def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
         # Passes when run alone (this is the isolated single-test validation).
         return RunResult(passed=True, traceback="", duration=0.1)
 
@@ -397,7 +397,7 @@ def test_max_iters_stops_at_two(tmp_path):
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _good_test(target, tmp_path)
 
-    def fake_run(test_file, repo_path, timeout_s=30):
+    def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
         return RunResult(passed=True, traceback="", duration=0.1)
 
     coverage_seq = iter([50.0, 60.0, 70.0, 80.0])

@@ -42,6 +42,15 @@ def run(
     max_claude_iters: int = typer.Option(
         3, help="Maximum Claude tool-use iterations per escalated target."
     ),
+    python: str = typer.Option(
+        None,
+        "--python",
+        help=(
+            "Interpreter used to run generated tests (e.g. a target venv's "
+            "python). Defaults to auto-detecting the repo's .venv/venv, then "
+            "falling back to reflecta's own interpreter."
+        ),
+    ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
@@ -68,6 +77,7 @@ def run(
         stall_k=stall_k,
         escalate=escalate,
         max_claude_iters=max_claude_iters,
+        python_exe=python,
         ui=ui,
     )
     report_path = path / "reflecta-report.json"

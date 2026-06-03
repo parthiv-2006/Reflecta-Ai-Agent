@@ -164,7 +164,7 @@ def test_hanging_test_enters_repair_path(tmp_path):
     gen = _test_with_assertions(targets[0], tmp_path)
     repair_calls = {"n": 0}
 
-    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None):
+    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs):
         repair_calls["n"] += 1
         assert result.traceback == "timeout"
         return (None, [RepairAttempt(1, "timeout", "groq-fast", RepairResult.FAIL)])
@@ -219,7 +219,7 @@ def test_invalid_python_from_gemini_enters_repair_path(tmp_path):
 
     repair_calls = {"n": 0}
 
-    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None):
+    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs):
         repair_calls["n"] += 1
         return (
             None,
