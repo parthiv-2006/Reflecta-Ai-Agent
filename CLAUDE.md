@@ -41,6 +41,13 @@ CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> Ge
 - Map missed line numbers back to enclosing functions via the source AST, not regex.
 - Test file names use a monotonic per-module counter determined by scanning existing `_reflecta` files at write time — no manifest needed, names never collide across runs.
 - Free tiers rate-limit (429) and have daily caps. All provider calls go through `src/reflecta/llm/provider.py` — a wrapper with exponential backoff and a `BudgetExhausted` exception. Never call provider SDKs directly from feature code.
+- **O(1) Incremental Coverage Checking**: `measure_coverage` supports an optional `test_file` parameter to run only the new test with the `--append` flag, avoiding O(T) full-suite coverage runs. The `.coverage` database is backed up before running and restored if the test is discarded to keep the state clean.
+- **Dynamic PYTHONPATH Injection**: To handle scripts in non-package layout folders (e.g. `scripts/`), the subprocess runner dynamically discovers source directories and injects them into the child's `PYTHONPATH`.
+- **Large Source File Trimming**: Large target source files (exceeding 15,000 characters) are trimmed using the AST to include only the target function/method and the top 100 lines (imports/setup) before calling Groq to avoid `HTTP 413 Payload Too Large` developer tier limits.
+- **Heavy Directory Exclusions**: Sandbox copying ignores `node_modules`, `build`, `dist`, and `.omc` to optimize disk I/O.
+- **Mocking Convention**: Test generation prompts mandate Python's built-in `unittest.mock` module over the third-party `pytest-mock` `mocker` fixture, as the latter might not be installed in the target codebase.
+- **Conversational Response Extraction**: Code fences are stripped using a regex search (`strip_fences`) to extract Python code blocks anywhere in LLM outputs, preventing conversational wrappers from causing `SyntaxError`s.
+
 
 ## Repository structure
 Follow a senior-engineer layout: flat, discoverable, no clever nesting.
