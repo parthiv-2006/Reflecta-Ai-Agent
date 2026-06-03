@@ -445,7 +445,24 @@ def run_loop(
                         repo_path=repo_path,
                         gemini_client=gemini_client,
                     )
-                budget.charge(1)
+                budget.charge(test.generation_calls)
+
+                # Structurally unrunnable draft (empty, no test, missing import).
+                # Repair cannot rescue these — it would feed garbage to Groq and
+                # burn budget. Skip straight to SKIPPED and move on.
+                if test.structural_error is not None:
+                    if ui:
+                        ui.step(
+                            "Generate", ok=False, note=test.structural_error
+                        )
+                    test.test_file_path.unlink(missing_ok=True)
+                    target.status = TargetStatus.SKIPPED
+                    report.tests_skipped += 1
+                    iter_count += 1
+                    stall += 1
+                    logger.info("  skipped: %s", test.structural_error)
+                    continue
+
                 if ui:
                     ui.step("Generate", ok=True)
 

@@ -11,6 +11,11 @@ class TargetStatus(enum.Enum):
     DISCARDED = "discarded"
     ESCALATED = "escalated"
     FAILED = "failed"
+    # The generated file was structurally unrunnable (empty, no test, missing
+    # import) and could not be regenerated into something coherent. Distinct
+    # from FAILED (a valid test that genuinely couldn't be repaired) so the
+    # report says *why* no test was produced.
+    SKIPPED = "skipped"
 
 
 class RepairResult(enum.Enum):
@@ -34,6 +39,13 @@ class GeneratedTest:
     source_code: str
     model_used: str
     assertion_count: int = 0
+    # Number of generation LLM calls this test cost (1 normally, more when the
+    # first draft was structurally invalid and had to be regenerated). The loop
+    # charges the budget by this so regeneration is counted honestly.
+    generation_calls: int = 1
+    # Set when the final draft is still structurally unrunnable. The loop skips
+    # the (pointless) repair path for these and marks the target SKIPPED.
+    structural_error: str | None = None
 
 
 @dataclass
@@ -60,6 +72,7 @@ class RunReport:
     targets: list[CoverageTarget] = field(default_factory=list)
     tests_kept: int = 0
     tests_discarded: int = 0
+    tests_skipped: int = 0
     repair_attempts_used: int = 0
     escalations_attempted: int = 0
     escalations_succeeded: int = 0

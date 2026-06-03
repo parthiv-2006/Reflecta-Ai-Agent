@@ -128,6 +128,57 @@ def test_generated_test_has_assertion_count(monkeypatch, tmp_path):
     assert result.assertion_count == 2
 
 
+BROKEN_FRAGMENT = "@mock.patch('datetime.datetime')\ndef test_x(m):\n    assert m\n"
+FIXED_TEST = (
+    "from unittest import mock\n\n"
+    "@mock.patch('calc.helper')\n"
+    "def test_x(m):\n"
+    "    assert m is not None\n"
+)
+
+
+def test_regenerates_once_when_first_draft_is_broken(monkeypatch, tmp_path):
+    """A broken first draft (missing import) triggers exactly one regeneration;
+    the valid second draft is kept with no structural_error."""
+    drafts = iter([BROKEN_FRAGMENT, FIXED_TEST])
+    prompts = []
+
+    def mock_generate(prompt, *, client=None):
+        prompts.append(prompt)
+        return next(drafts)
+
+    monkeypatch.setattr("reflecta.generate.gemini.generate", mock_generate)
+
+    target = _make_target(tmp_path / "calc.py", [2])
+    result = generate_test(
+        target, "def helper(): ...", "", repo_path=tmp_path
+    )
+
+    assert len(prompts) == 2
+    assert result.generation_calls == 2
+    assert result.structural_error is None
+    # The retry prompt must tell the model why the first draft was rejected.
+    assert "REJECTED" in prompts[1]
+    ast.parse(result.test_file_path.read_text())
+
+
+def test_structural_error_set_when_all_drafts_broken(monkeypatch, tmp_path):
+    """If every draft is broken, the target carries a structural_error so the
+    loop can skip it instead of paying the repair budget."""
+    monkeypatch.setattr(
+        "reflecta.generate.gemini.generate", lambda *a, **kw: BROKEN_FRAGMENT
+    )
+
+    target = _make_target(tmp_path / "calc.py", [2])
+    result = generate_test(
+        target, "def helper(): ...", "", repo_path=tmp_path, max_attempts=2
+    )
+
+    assert result.generation_calls == 2
+    assert result.structural_error is not None
+    assert "mock" in result.structural_error
+
+
 def test_module_import_path_flat_module(tmp_path):
     from reflecta.generate import module_import_path
 
