@@ -16,6 +16,7 @@ def build_generation_prompt(
     module_path: str,
     missing_lines: list[int],
     existing_tests: str,
+    retry_reason: str | None = None,
 ) -> str:
     existing_section = (
         f"Existing tests for context (do NOT duplicate them):\n{existing_tests}\n\n"
@@ -38,15 +39,34 @@ def build_generation_prompt(
     else:
         target_hint = f"- Import the target directly: `{import_line}`\n"
 
+    retry_section = (
+        "\nYOUR PREVIOUS ATTEMPT WAS REJECTED: "
+        f"{retry_reason}.\n"
+        "Return the COMPLETE corrected file from the very first import line. "
+        "Do not abbreviate, do not reference a previous version.\n"
+        if retry_reason
+        else ""
+    )
+
     return (
-        "Write a pytest test file for the Python source below.\n\n"
+        "Write a complete, self-contained pytest test file for the Python "
+        "source below.\n\n"
         "RULES:\n"
         "- Output ONLY valid Python code. No markdown fences. No explanation.\n"
+        "- Output ONE complete file. Never abbreviate with comments like "
+        "`# rest of the function remains the same`, `...`, or `# your code here`. "
+        "Every function body must be written out in full.\n"
         "- The first line must be an import statement.\n"
+        "- Import EVERYTHING you use. If you use `mock.patch`, the file MUST "
+        "include `from unittest import mock` at the top.\n"
+        "- Every fixture passed as a test-function argument must either be a "
+        "built-in pytest fixture or be defined with `@pytest.fixture` in this "
+        "same file. Do not reference fixtures that are not defined here.\n"
         f"{target_hint}"
         "- For mocking, always use standard library `unittest.mock` (e.g. `mock.patch`, `mock.MagicMock`). Do NOT use the third-party `mocker` fixture from `pytest-mock` since it is not installed.\n"
         "- Write at least two test functions that exercise the target with real assertions.\n"
-        "- Do NOT use `assert True` or trivially-true assertions.\n\n"
+        "- Do NOT use `assert True` or trivially-true assertions.\n"
+        f"{retry_section}\n"
         f"Source:\n{source}\n\n"
         f"{existing_section}"
         f"Target to cover: `{qualified_name}`\n"

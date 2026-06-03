@@ -46,7 +46,13 @@ CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> Ge
 - **Large Source File Trimming**: Large target source files (exceeding 15,000 characters) are trimmed using the AST to include only the target function/method and the top 100 lines (imports/setup) before calling Groq to avoid `HTTP 413 Payload Too Large` developer tier limits.
 - **Heavy Directory Exclusions**: Sandbox copying ignores `node_modules`, `build`, `dist`, and `.omc` to optimize disk I/O.
 - **Mocking Convention**: Test generation prompts mandate Python's built-in `unittest.mock` module over the third-party `pytest-mock` `mocker` fixture, as the latter might not be installed in the target codebase.
-- **Conversational Response Extraction**: Code fences are stripped using a regex search (`strip_fences`) to extract Python code blocks anywhere in LLM outputs, preventing conversational wrappers from causing `SyntaxError`s.
+- **Conversational Response Extraction**: `strip_fences` concatenates **every** ```` ```python ```` block in the LLM response (not just the first). Gemini interleaves prose between multiple fences; taking only the first block truncated the file and dropped imports, leaving dangling `@mock.patch` → `NameError` at collection. Empty fenced blocks are ignored.
+- **Generation Validation + Regeneration**: A draft can parse cleanly yet be unrunnable (empty module, no `test_*` function, or a decorator using an unimported name). `validation.validate_test_source` catches these; `generate_test` regenerates once with the concrete reason; an irrecoverable draft is marked `TargetStatus.SKIPPED` and never enters the (futile) repair path. `ast.parse` alone is insufficient — empty files and dangling-decorator fragments are syntactically valid.
+- **Target Interpreter / venv Auto-Detection**: Generated tests run under the **target repo's** virtualenv (`.venv`/`venv`/`env`, Windows `Scripts/` or POSIX `bin/`) when present, falling back to reflecta's own interpreter. Detection happens on the original repo *before* `copytree` (the isolated copy excludes the venv). Override with `--python <path>`. Without this, any repo whose deps aren't installed in reflecta's own env failed every `import` with `ModuleNotFoundError`.
+- **Import Preflight**: Before the loop, `environment.preflight_imports` checks the targets' third-party imports with `importlib.util.find_spec` (which never executes module code — safe for modules that do I/O at import) and reports missing packages once, clearly, instead of failing every target.
+- **pytest Exit-Code Classification**: `runner._classify_failure` maps non-zero exits to `RunResult.failure_kind` (`no_tests`=5, `import_error`=ModuleNotFoundError/ImportError in traceback, `collection_error`=2, else `test_failure`). The loop routes `no_tests`/`import_error` straight to `SKIPPED` — repair can't fix an empty suite or a missing dependency.
+- **Entrypoint Skipping**: `coverage_report._detect_entrypoints` flags `main` and functions called under `if __name__ == "__main__"`. `select_next` ranks them last and `run_loop` skips them by default (`--no-skip-entrypoints` to attempt). They drive the whole program from argv and aren't unit-testable.
+- **UTF-8 Test Writes**: Generated/repaired tests are written with `encoding="utf-8"`. They routinely contain non-ASCII (sample strings for text-processing code); the platform default (cp1252 on Windows) raised `UnicodeEncodeError`, swallowed by the loop as a silent FAILED.
 
 
 ## Repository structure
@@ -63,9 +69,11 @@ reflecta/
 │       ├── cli.py               # typer commands: run / clean / report
 │       ├── loop.py              # main orchestration loop
 │       ├── coverage_report.py   # extract_targets: coverage.json -> CoverageTarget list
-│       ├── selection.py         # select_next: ranks pending targets
-│       ├── generate.py          # generate_test: calls Gemini, writes _reflecta file
-│       ├── runner.py            # run_test: subprocess + timeout
+│       ├── selection.py         # select_next: ranks pending targets (entrypoints last)
+│       ├── generate.py          # generate_test: Gemini + validate/regenerate, writes _reflecta file
+│       ├── validation.py        # validate_test_source: reject empty/no-test/missing-import drafts
+│       ├── environment.py       # detect_interpreter (target venv) + preflight_imports
+│       ├── runner.py            # run_test: subprocess + timeout + exit-code classification
 │       ├── repair.py            # repair_test: Groq repair loop
 │       ├── gates.py             # passes_assertion_gate, passes_delta_gate
 │       ├── budget.py            # BudgetTracker: stop before hitting daily cap

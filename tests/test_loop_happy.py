@@ -42,7 +42,7 @@ def test_happy_path_two_targets_both_kept(tmp_path):
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _gen_test(target, tmp_path)
 
-    def fake_run_test(test_file, repo_path, timeout_s=30):
+    def fake_run_test(test_file, repo_path, timeout_s=30, **kwargs):
         return RunResult(passed=True, traceback="", duration=0.1)
 
     # measure_coverage: before=50, after first=60, after second=70.
@@ -79,7 +79,7 @@ def test_happy_path_max_iters_stops_early(tmp_path):
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _gen_test(target, tmp_path)
 
-    def fake_run_test(test_file, repo_path, timeout_s=30):
+    def fake_run_test(test_file, repo_path, timeout_s=30, **kwargs):
         return RunResult(passed=True, traceback="", duration=0.1)
 
     coverage_sequence = iter([50.0, 60.0, 70.0, 80.0])
@@ -143,7 +143,7 @@ def test_happy_path_run_fails_marks_failed(tmp_path):
     def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
         return _gen_test(target, tmp_path)
 
-    def fake_run_test(test_file, repo_path, timeout_s=30):
+    def fake_run_test(test_file, repo_path, timeout_s=30, **kwargs):
         return RunResult(passed=False, traceback="AssertionError", duration=0.1)
 
     def fake_measure(*a, **k):

@@ -33,6 +33,7 @@ def test_coverage_target_status_values():
         "discarded",
         "escalated",
         "failed",
+        "skipped",
     }
 
 

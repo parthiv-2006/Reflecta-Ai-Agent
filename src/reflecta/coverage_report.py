@@ -28,6 +28,39 @@ def _build_class_map(tree: ast.Module) -> dict[int, str]:
     return class_map
 
 
+def _is_main_guard(node: ast.If) -> bool:
+    """True if ``node`` is an ``if __name__ == "__main__":`` block."""
+    test = node.test
+    if not isinstance(test, ast.Compare) or len(test.comparators) != 1:
+        return False
+    left, right = test.left, test.comparators[0]
+    return (
+        isinstance(left, ast.Name)
+        and left.id == "__name__"
+        and isinstance(right, ast.Constant)
+        and right.value == "__main__"
+    )
+
+
+def _detect_entrypoints(tree: ast.Module) -> set[str]:
+    """Names of functions that act as the module's entrypoint.
+
+    Includes any function literally named ``main`` plus every function *called*
+    inside an ``if __name__ == "__main__":`` guard (e.g. ``run()``, ``cli()``).
+    These drive the whole program from argv and are not unit-testable.
+    """
+    entrypoints: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name == "main":
+                entrypoints.add(node.name)
+        elif isinstance(node, ast.If) and _is_main_guard(node):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+                    entrypoints.add(sub.func.id)
+    return entrypoints
+
+
 def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget]:
     """Parse a coverage.json dict into CoverageTarget objects.
 
@@ -62,6 +95,7 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
             logger.warning("skipping unparseable source file %s: %s", abs_path, exc)
             continue
         class_map = _build_class_map(tree)
+        entrypoints = _detect_entrypoints(tree)
 
         missing_set = set(missing)
 
@@ -85,6 +119,7 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
                     qualified_name=qualified_name,
                     missing_lines=func_missing,
                     priority=float(len(func_missing)),
+                    is_entrypoint=node.name in entrypoints,
                 )
             )
 

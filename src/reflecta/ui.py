@@ -65,6 +65,24 @@ class ReflectaUI:
                 f" across {n_files} file{'s' if n_files != 1 else ''}"
             )
 
+    def print_preflight_warning(self, missing: list[str], interpreter: str) -> None:
+        self._c.print()
+        self._c.print(
+            f"  [yellow]⚠ Missing dependencies[/] under [dim]{interpreter}[/]:"
+            f"  [bold]{', '.join(missing)}[/]"
+        )
+        self._c.print(
+            "  [dim]Install them in that environment, or pass "
+            "--python <venv-python>. Tests importing these will be skipped.[/]"
+        )
+
+    def print_entrypoints_skipped(self, n: int) -> None:
+        self._c.print(
+            f"  [dim]Skipped {n} entrypoint target{'s' if n != 1 else ''} "
+            f"(main / __main__ — not unit-testable). Use --no-skip-entrypoints "
+            f"to attempt them.[/]"
+        )
+
     def print_loop_header(self, max_iters: int) -> None:
         self._max_iters = max_iters
         self._c.print()
@@ -105,7 +123,7 @@ class ReflectaUI:
 
     def print_repair_exhausted(self) -> None:
         self._c.print(
-            f"        [yellow]Repair budget exhausted[/] — [dim]SKIPPED[/]"
+            "        [yellow]Repair budget exhausted[/] — [dim]SKIPPED[/]"
         )
 
     def print_escalating(self, max_iters: int) -> None:
@@ -142,10 +160,16 @@ class ReflectaUI:
             f"{report.coverage_before:.1f}% [dim]→[/] [bold]{report.coverage_after:.1f}%[/]"
             f"  [{colour}]{sign}{delta:.1f} pp[/]"
         )
+        skipped_part = (
+            f"  [dim]·[/]  skipped {report.tests_skipped}"
+            if getattr(report, "tests_skipped", 0)
+            else ""
+        )
         self._c.print(
             f"  [bold]Tests[/]        "
             f"kept [green]{report.tests_kept}[/]"
             f"  [dim]·[/]  discarded {report.tests_discarded}"
+            f"{skipped_part}"
             f"  [dim]·[/]  repairs {report.repair_attempts_used}"
         )
         if report.escalations_attempted:

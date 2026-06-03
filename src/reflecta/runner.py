@@ -1,7 +1,6 @@
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -30,10 +29,35 @@ def child_env(repo_path: Path | None = None) -> dict[str, str]:
     return env
 
 
-def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult:
+def _classify_failure(returncode: int, traceback: str) -> str:
+    """Map a non-zero pytest exit code + output to a failure kind.
+
+    pytest exit codes: 1=tests failed, 2=collection/internal error, 5=no tests
+    collected. A missing module at collection (``ModuleNotFoundError`` /
+    ``ImportError``) is an environment problem repair can never fix, so it is
+    split out from ordinary collection errors and from genuine test failures.
+    """
+    if returncode == 5:
+        return "no_tests"
+    if "ModuleNotFoundError" in traceback or "ImportError" in traceback:
+        return "import_error"
+    if returncode == 2:
+        return "collection_error"
+    return "test_failure"
+
+
+def run_test(
+    test_file: Path,
+    repo_path: Path,
+    timeout_s: int = 30,
+    python_exe: str | None = None,
+) -> RunResult:
+    from reflecta.environment import detect_interpreter
+
+    exe = python_exe or detect_interpreter(repo_path)
     start = time.monotonic()
     proc = subprocess.Popen(
-        [sys.executable, "-m", "pytest", str(test_file), "--tb=short", "-q"],
+        [exe, "-m", "pytest", str(test_file), "--tb=short", "-q"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -45,16 +69,24 @@ def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult
         duration = time.monotonic() - start
         passed = proc.returncode == 0
         tb = "" if passed else (stdout + stderr).strip()
-        return RunResult(passed=passed, traceback=tb, duration=duration)
+        kind = "" if passed else _classify_failure(proc.returncode, tb)
+        return RunResult(
+            passed=passed, traceback=tb, duration=duration, failure_kind=kind
+        )
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.communicate()
         duration = time.monotonic() - start
-        return RunResult(passed=False, traceback="timeout", duration=duration)
+        return RunResult(
+            passed=False, traceback="timeout", duration=duration, failure_kind="timeout"
+        )
 
 
 def run_test_isolated(
-    test_file: Path, repo_path: Path, timeout_s: int = 30
+    test_file: Path,
+    repo_path: Path,
+    timeout_s: int = 30,
+    python_exe: str | None = None,
 ) -> RunResult:
     """Run a generated test in a disposable temp copy of the repo.
 
@@ -62,9 +94,14 @@ def run_test_isolated(
     in the actual working tree. The original test file and all source files are
     untouched regardless of what the generated test does.
     """
+    from reflecta.environment import detect_interpreter
+
     repo_path = Path(repo_path).resolve()
     test_file = Path(test_file).resolve()
     rel = test_file.relative_to(repo_path)
+    # Detect the interpreter on the *original* repo — the temp copy excludes the
+    # virtualenv, so detection must happen before copytree.
+    exe = python_exe or detect_interpreter(repo_path)
 
     tmp_root = Path(tempfile.mkdtemp(prefix="reflecta_iso_"))
     try:
@@ -87,6 +124,8 @@ def run_test_isolated(
                 ".omc",
             ),
         )
-        return run_test(tmp_repo / rel, tmp_repo, timeout_s=timeout_s)
+        return run_test(
+            tmp_repo / rel, tmp_repo, timeout_s=timeout_s, python_exe=exe
+        )
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)

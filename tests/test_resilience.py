@@ -50,7 +50,7 @@ def test_repair_budget_exhausted_marks_failed_continues(tmp_path):
         ]
     )
 
-    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None):
+    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs):
         raise BudgetExhausted("groq daily cap hit")
 
     coverage_seq = iter([50.0, 60.0])
