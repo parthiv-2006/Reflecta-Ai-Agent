@@ -24,6 +24,42 @@ def test_strip_fences_noop_without_fence():
     assert strip_fences(raw) == "def test_x():\n    assert True"
 
 
+def test_strip_fences_concatenates_multiple_blocks():
+    # Gemini frequently emits prose between several code fences. The previous
+    # non-greedy regex kept only the FIRST block, producing a truncated file
+    # missing imports/fixtures. We must reassemble every python block in order.
+    raw = (
+        "Here are the imports:\n"
+        "```python\n"
+        "from unittest import mock\n"
+        "from calc import add\n"
+        "```\n"
+        "And the test itself:\n"
+        "```python\n"
+        "def test_add():\n"
+        "    assert add(1, 2) == 3\n"
+        "```\n"
+    )
+    out = strip_fences(raw)
+    assert "from unittest import mock" in out
+    assert "from calc import add" in out
+    assert "def test_add():" in out
+    # The reassembled file must be valid, importable Python.
+    import ast
+
+    ast.parse(out)
+
+
+def test_strip_fences_handles_py_and_bare_language_tags():
+    raw = "```py\nx = 1\n```"
+    assert strip_fences(raw) == "x = 1"
+
+
+def test_strip_fences_ignores_empty_blocks():
+    raw = "```python\n```\n```python\nx = 1\n```"
+    assert strip_fences(raw) == "x = 1"
+
+
 def test_success_no_delay(monkeypatch):
     sleep_calls = []
     monkeypatch.setattr(
