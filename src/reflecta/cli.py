@@ -51,6 +51,15 @@ def run(
             "falling back to reflecta's own interpreter."
         ),
     ),
+    skip_entrypoints: bool = typer.Option(
+        True,
+        "--skip-entrypoints/--no-skip-entrypoints",
+        help=(
+            "Skip module entrypoints (main / functions under "
+            "if __name__=='__main__'); they are not unit-testable and waste "
+            "budget. Pass --no-skip-entrypoints to attempt them anyway."
+        ),
+    ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
@@ -78,6 +87,7 @@ def run(
         escalate=escalate,
         max_claude_iters=max_claude_iters,
         python_exe=python,
+        skip_entrypoints=skip_entrypoints,
         ui=ui,
     )
     report_path = path / "reflecta-report.json"

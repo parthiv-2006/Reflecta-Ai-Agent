@@ -97,3 +97,25 @@ def test_tiebreak_simpler_signature_wins() -> None:
     result = select_next(targets)
     assert result is not None
     assert result.qualified_name == "func"
+
+
+# ---------------------------------------------------------------------------
+# Case 6 — entrypoints are deprioritized even with higher raw priority
+# ---------------------------------------------------------------------------
+
+
+def test_entrypoint_deprioritized_below_ordinary_target() -> None:
+    main = _target("main", [1, 2, 3, 4, 5])
+    main.is_entrypoint = True
+    ordinary = _target("parse", [1])
+    result = select_next([main, ordinary])
+    assert result is not None
+    assert result.qualified_name == "parse"
+
+
+def test_entrypoint_selected_when_only_candidate() -> None:
+    main = _target("main", [1, 2])
+    main.is_entrypoint = True
+    result = select_next([main])
+    assert result is not None
+    assert result.qualified_name == "main"

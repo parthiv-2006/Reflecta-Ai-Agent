@@ -356,6 +356,7 @@ def run_loop(
     groq_client=None,
     claude_client=None,
     python_exe: str | None = None,
+    skip_entrypoints: bool = True,
     ui: "ReflectaUI | None" = None,
 ) -> RunReport:
     """Main orchestration loop.
@@ -443,6 +444,21 @@ def run_loop(
         coverage_after=coverage_before,
         targets=targets,
     )
+
+    # Skip module entrypoints up front (default). They drive the whole program
+    # from argv and cannot be unit-tested, so attempting them only wastes the
+    # LLM budget that should go to ordinary functions.
+    if skip_entrypoints:
+        n_skipped = 0
+        for t in targets:
+            if t.is_entrypoint and t.status == TargetStatus.PENDING:
+                t.status = TargetStatus.SKIPPED
+                report.tests_skipped += 1
+                n_skipped += 1
+        if n_skipped:
+            logger.info("skipped %d entrypoint target(s)", n_skipped)
+            if ui:
+                ui.print_entrypoints_skipped(n_skipped)
 
     if ui:
         ui.print_loop_header(max_iters)

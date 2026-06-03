@@ -76,6 +76,13 @@ class ReflectaUI:
             "--python <venv-python>. Tests importing these will be skipped.[/]"
         )
 
+    def print_entrypoints_skipped(self, n: int) -> None:
+        self._c.print(
+            f"  [dim]Skipped {n} entrypoint target{'s' if n != 1 else ''} "
+            f"(main / __main__ — not unit-testable). Use --no-skip-entrypoints "
+            f"to attempt them.[/]"
+        )
+
     def print_loop_header(self, max_iters: int) -> None:
         self._max_iters = max_iters
         self._c.print()

@@ -200,3 +200,47 @@ def add(a, b):
 
     assert len(targets) == 1
     assert targets[0].priority == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint detection
+# ---------------------------------------------------------------------------
+
+
+def test_main_function_flagged_as_entrypoint(tmp_path: Path) -> None:
+    source = """def helper(x):
+    return x + 1
+
+
+def main():
+    helper(1)
+    print("done")
+"""
+    _write_source(tmp_path, "app.py", source)
+    cov = _coverage_json("app.py", missing=[2, 6, 7])
+
+    targets = {t.qualified_name: t for t in extract_targets(cov, tmp_path)}
+
+    assert targets["main"].is_entrypoint is True
+    assert targets["helper"].is_entrypoint is False
+
+
+def test_function_called_under_main_guard_is_entrypoint(tmp_path: Path) -> None:
+    source = """def run():
+    return 42
+
+
+def pure(x):
+    return x * 2
+
+
+if __name__ == "__main__":
+    run()
+"""
+    _write_source(tmp_path, "cli.py", source)
+    cov = _coverage_json("cli.py", missing=[2, 6])
+
+    targets = {t.qualified_name: t for t in extract_targets(cov, tmp_path)}
+
+    assert targets["run"].is_entrypoint is True
+    assert targets["pure"].is_entrypoint is False

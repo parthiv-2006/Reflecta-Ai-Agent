@@ -30,6 +30,11 @@ class CoverageTarget:
     missing_lines: list[int]
     priority: float = 0.0
     status: TargetStatus = TargetStatus.PENDING
+    # True for module entrypoints (``main`` / functions invoked under an
+    # ``if __name__ == "__main__"`` guard). These parse argv and drive the whole
+    # program, so they are near-impossible to unit-test and waste budget. The
+    # loop deprioritizes them and, by default, skips them entirely.
+    is_entrypoint: bool = False
 
 
 @dataclass
