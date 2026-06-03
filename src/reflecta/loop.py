@@ -1,26 +1,73 @@
 import ast
+import contextlib
 import json
 import logging
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
 from reflecta.escalate import escalate_target
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import collect_existing_tests, generate_test
+from reflecta.llm.groq import MODEL_FAST
 from reflecta.llm.provider import BudgetExhausted
-from reflecta.models import GeneratedTest, RunReport, RunResult, TargetStatus
+from reflecta.models import GeneratedTest, RepairResult, RunReport, RunResult, TargetStatus
 from reflecta.repair import repair_test
 from reflecta.runner import child_env, run_test_isolated
 from reflecta.selection import select_next
+
+if TYPE_CHECKING:
+    from reflecta.ui import ReflectaUI
 
 logger = logging.getLogger("reflecta")
 
 
 COVERAGE_DIR = ".reflecta"
+
+
+_SKIP_DIRS = frozenset(
+    {
+        "tests",
+        "test",
+        "_tests",
+        "__pycache__",
+        "node_modules",
+        "venv",
+        ".venv",
+        "env",
+        "dist",
+        "build",
+        ".tox",
+        ".reflecta",
+        "_reflecta",
+    }
+)
+
+
+def _source_dirs(repo_path: Path) -> list[str]:
+    """Return top-level directory names (relative to repo_path) that contain
+    Python source files, skipping hidden dirs, generated dirs, and test dirs.
+
+    Falls back to ["."] only when no subdirectory qualifies — callers must
+    treat "." with caution because it can match hidden worktree paths.
+    """
+    found = []
+    for child in sorted(repo_path.iterdir()):
+        if not child.is_dir():
+            continue
+        if child.name.startswith(".") or child.name in _SKIP_DIRS:
+            continue
+        if any(child.rglob("*.py")):
+            found.append(child.name)
+    # Also include root-level .py files (not the seed) as a plain "." source
+    # only when there are no qualifying subdirs, to avoid scanning hidden dirs.
+    if not found and any(repo_path.glob("*.py")):
+        found.append(".")
+    return found or ["."]
 
 
 def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
@@ -34,49 +81,145 @@ def coverage_paths(repo_path: Path) -> tuple[Path, Path]:
     return d / ".coverage", d / "coverage.json"
 
 
-def measure_coverage(repo_path: Path) -> float:
-    """Run the full test suite under coverage and return percent_covered.
+def measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
+    """Run the test suite under coverage and return percent_covered.
 
     Coverage data and the json report are written to ``.reflecta/`` via an
     explicit ``--data-file`` so the repo's own coverage artifacts are untouched.
+
+    When ``test_file`` is provided, runs coverage *only* on that test file and
+    appends to the existing coverage data-file. Otherwise, runs a full suite baseline.
     """
     repo_path = Path(repo_path).resolve()
     data_file, json_file = coverage_paths(repo_path)
-    env = child_env()
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "coverage",
-            "run",
-            f"--data-file={data_file}",
-            "-m",
-            "pytest",
-            "--tb=no",
-            "-q",
-        ],
-        cwd=repo_path,
-        capture_output=True,
-        env=env,
-    )
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "coverage",
-            "json",
-            f"--data-file={data_file}",
-            "-o",
-            str(json_file),
-        ],
-        cwd=repo_path,
-        capture_output=True,
-        env=env,
-    )
+    env = child_env(repo_path)
+
+    sources = _source_dirs(repo_path)
+    source_flags = [f"--source={s}" for s in sources]
+
+    if test_file is not None:
+        # Incremental run: run coverage only on the new test file and append to the existing data_file.
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--data-file={data_file}",
+                *source_flags,
+                "--append",
+                "-m",
+                "pytest",
+                "--tb=no",
+                "-q",
+                str(test_file),
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "json",
+                f"--data-file={data_file}",
+                "-o",
+                str(json_file),
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
+        )
+        if not json_file.exists():
+            return 0.0
+        data = json.loads(json_file.read_text(encoding="utf-8"))
+        return data.get("totals", {}).get("percent_covered", 0.0)
+
+    # Seed run: executes a no-op so coverage discovers all source files as 0%
+    # covered even when the repo has zero tests.  The seed file must stay on
+    # disk until after ``coverage json`` (coverage resolves line numbers from
+    # it); it is omitted from the report and deleted in the finally block.
+    seed_file = repo_path / "_reflecta_seed.py"
+    seed_file.write_text("pass\n", encoding="utf-8")
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--data-file={data_file}",
+                *source_flags,
+                str(seed_file),
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--data-file={data_file}",
+                *source_flags,
+                "--append",
+                "-m",
+                "pytest",
+                "--tb=no",
+                "-q",
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "json",
+                f"--data-file={data_file}",
+                f"--omit={seed_file.name}",
+                "-o",
+                str(json_file),
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
+        )
+    finally:
+        seed_file.unlink(missing_ok=True)
     if not json_file.exists():
         return 0.0
     data = json.loads(json_file.read_text(encoding="utf-8"))
     return data.get("totals", {}).get("percent_covered", 0.0)
+
+
+def _safe_measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
+    """Invokes measure_coverage safely, handling test mocks that only take 1 arg."""
+    import inspect
+    try:
+        sig = inspect.signature(measure_coverage)
+        params = list(sig.parameters.values())
+        accepts_test_file = any(p.name == "test_file" for p in params)
+        accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        if accepts_test_file or accepts_kwargs:
+            return measure_coverage(repo_path, test_file=test_file)
+
+        accepts_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+        if accepts_var_positional and len(params) == 1:
+            return measure_coverage(repo_path, test_file)
+
+        return measure_coverage(repo_path)
+    except Exception:
+        try:
+            return measure_coverage(repo_path, test_file=test_file)
+        except TypeError:
+            return measure_coverage(repo_path)
 
 
 def process_test(
@@ -109,6 +252,7 @@ def run_loop(
     gemini_client=None,
     groq_client=None,
     claude_client=None,
+    ui: "ReflectaUI | None" = None,
 ) -> RunReport:
     """Main orchestration loop.
 
@@ -120,14 +264,27 @@ def run_loop(
     repo_path = Path(repo_path).resolve()
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
 
-    coverage_before = measure_coverage(repo_path)
+    with (ui.spin("Measuring baseline coverage") if ui else contextlib.nullcontext()):
+        coverage_before = _safe_measure_coverage(repo_path)
 
     _, coverage_json_path = coverage_paths(repo_path)
     if coverage_json_path.exists():
         coverage_json = json.loads(coverage_json_path.read_text(encoding="utf-8"))
     else:
         coverage_json = {}
+
+    if ui:
+        files = coverage_json.get("files", {})
+        n_lines = sum(
+            v.get("summary", {}).get("missing_lines", 0) for v in files.values()
+        )
+        ui.print_baseline(coverage_before, len(files), n_lines)
+
     targets = extract_targets(coverage_json, repo_path)
+
+    if ui:
+        n_target_files = len({t.file_path for t in targets})
+        ui.print_targets_found(len(targets), n_target_files)
 
     if not targets:
         report = RunReport(
@@ -148,179 +305,251 @@ def run_loop(
         targets=targets,
     )
 
+    if ui:
+        ui.print_loop_header(max_iters)
+
     iter_count = 0
     stall = 0  # consecutive targets that did not raise coverage
-    while (target := select_next(targets)) is not None:
-        if target_coverage is not None and coverage_before >= target_coverage:
-            report.stop_reason = "target_reached"
-            break
 
-        if stall >= stall_k:
-            report.stop_reason = "stalled"
-            break
+    data_file, json_file = coverage_paths(repo_path)
+    backup_file = data_file.with_name(".coverage.backup")
 
-        if iter_count >= max_iters:
-            report.stop_reason = "max_iters"
-            break
+    try:
+        while (target := select_next(targets)) is not None:
+            if target_coverage is not None and coverage_before >= target_coverage:
+                report.stop_reason = "target_reached"
+                break
 
-        if budget.exhausted():
-            report.stop_reason = "budget"
-            break
+            if stall >= stall_k:
+                report.stop_reason = "stalled"
+                break
 
-        target.status = TargetStatus.GENERATING
-        logger.info(
-            "target %s (missing=%d, priority=%.1f)",
-            target.qualified_name,
-            len(target.missing_lines),
-            target.priority,
-        )
+            if iter_count >= max_iters:
+                report.stop_reason = "max_iters"
+                break
 
-        source = (
-            target.file_path.read_text(encoding="utf-8")
-            if target.file_path.exists()
-            else ""
-        )
-        existing_tests = collect_existing_tests(repo_path, target.file_path.stem)
+            if budget.exhausted():
+                report.stop_reason = "budget"
+                break
 
-        try:
-            test = generate_test(
-                target,
-                source,
-                existing_tests,
-                repo_path=repo_path,
-                gemini_client=gemini_client,
+            target.status = TargetStatus.GENERATING
+            if ui:
+                ui.print_target_header(iter_count + 1, target)
+            logger.info(
+                "target %s (missing=%d, priority=%.1f)",
+                target.qualified_name,
+                len(target.missing_lines),
+                target.priority,
             )
-            budget.charge(1)
+
+            # Backup the current coverage database
+            if data_file.exists():
+                import shutil
+                shutil.copy2(data_file, backup_file)
+
+            source = (
+                target.file_path.read_text(encoding="utf-8")
+                if target.file_path.exists()
+                else ""
+            )
+            existing_tests = collect_existing_tests(repo_path, target.file_path.stem)
 
             try:
-                ast.parse(test.source_code)
-            except SyntaxError:
-                # Invalid Python from the LLM — treat as a run failure so the
-                # repair path gets a chance to fix it rather than silently
-                # discarding the target.
-                result = RunResult(
-                    passed=False,
-                    traceback="SyntaxError: generated code is not valid Python",
-                    duration=0.0,
-                )
-            else:
-                if not passes_assertion_gate(test):
-                    test.test_file_path.unlink(missing_ok=True)
-                    target.status = TargetStatus.DISCARDED
-                    report.tests_discarded += 1
-                    iter_count += 1
-                    stall += 1
-                    logger.info("  discarded: failed assertion gate")
-                    continue
-                result = run_test_isolated(test.test_file_path, repo_path)
-
-            if not result.passed:
-                if budget.exhausted():
-                    test.test_file_path.unlink(missing_ok=True)
-                    target.status = TargetStatus.FAILED
-                    iter_count += 1
-                    report.stop_reason = "budget"
-                    break
+                with (ui.spin("Generate") if ui else contextlib.nullcontext()):
+                    test = generate_test(
+                        target,
+                        source,
+                        existing_tests,
+                        repo_path=repo_path,
+                        gemini_client=gemini_client,
+                    )
+                budget.charge(1)
+                if ui:
+                    ui.step("Generate", ok=True)
 
                 try:
-                    repaired, attempts = repair_test(
-                        test,
-                        result,
-                        source,
-                        repo_path=repo_path,
-                        max_repairs=max_repairs,
-                        groq_client=groq_client,
+                    ast.parse(test.source_code)
+                except SyntaxError:
+                    # Invalid Python from the LLM — treat as a run failure so the
+                    # repair path gets a chance to fix it rather than silently
+                    # discarding the target.
+                    if ui:
+                        ui.step("Run", ok=False, note="syntax error in generated code")
+                    result = RunResult(
+                        passed=False,
+                        traceback="SyntaxError: generated code is not valid Python",
+                        duration=0.0,
                     )
-                except BudgetExhausted:
-                    # Repair provider hit its daily cap — mark this target failed
-                    # and continue. Only a generation-side BudgetExhausted stops
-                    # the entire loop.
-                    logger.warning(
-                        "repair provider exhausted on %s; skipping target",
-                        target.qualified_name,
-                    )
-                    test.test_file_path.unlink(missing_ok=True)
-                    target.status = TargetStatus.FAILED
-                    iter_count += 1
-                    stall += 1
-                    continue
-                report.repair_attempts_used += len(attempts)
-                budget.charge(len(attempts))
+                else:
+                    if not passes_assertion_gate(test):
+                        if ui:
+                            ui.print_gate_failed()
+                        test.test_file_path.unlink(missing_ok=True)
+                        target.status = TargetStatus.DISCARDED
+                        report.tests_discarded += 1
+                        iter_count += 1
+                        stall += 1
+                        logger.info("  discarded: failed assertion gate")
+                        continue
+                    with (ui.spin("Run") if ui else contextlib.run_in_executor if False else contextlib.nullcontext()):
+                        result = run_test_isolated(test.test_file_path, repo_path)
+                    if ui:
+                        ui.step("Run", ok=result.passed, note="passing" if result.passed else "failed")
 
-                if repaired is None:
-                    if escalate:
-                        logger.info(
-                            "  repair exhausted — escalating to Claude (%d iters)",
-                            max_claude_iters,
+                if not result.passed:
+                    if budget.exhausted():
+                        test.test_file_path.unlink(missing_ok=True)
+                        target.status = TargetStatus.FAILED
+                        iter_count += 1
+                        report.stop_reason = "budget"
+                        break
+
+                    try:
+                        with (ui.spin("Repair") if ui else contextlib.nullcontext()):
+                            repaired, attempts = repair_test(
+                                test,
+                                result,
+                                source,
+                                repo_path=repo_path,
+                                max_repairs=max_repairs,
+                                groq_client=groq_client,
+                            )
+                    except BudgetExhausted:
+                        logger.warning(
+                            "repair provider exhausted on %s; skipping target",
+                            target.qualified_name,
                         )
-                        report.escalations_attempted += 1
-                        repaired = escalate_target(
-                            test,
-                            result,
-                            source,
-                            repo_path=repo_path,
-                            max_iters=max_claude_iters,
-                            claude_client=claude_client,
-                        )
-                        if repaired is None:
-                            target.status = TargetStatus.ESCALATED
-                            iter_count += 1
-                            stall += 1
-                            logger.info("  escalation failed: target marked ESCALATED")
-                            continue
-                        logger.info("  escalation succeeded")
-                        report.escalations_succeeded += 1
-                    else:
+                        if ui:
+                            ui.print_repair_exhausted()
+                        test.test_file_path.unlink(missing_ok=True)
                         target.status = TargetStatus.FAILED
                         iter_count += 1
                         stall += 1
-                        logger.info(
-                            "  failed: repair exhausted after %d attempt(s)", len(attempts)
-                        )
                         continue
 
-                # repair succeeded — treat repaired test as the passing test
-                logger.info("  repaired after %d attempt(s)", len(attempts))
-                test = repaired
+                    # Print per-attempt results now that we have the full list
+                    if ui:
+                        for att in attempts:
+                            ok = att.result == RepairResult.PASS
+                            model_label = "8B" if att.model_used == MODEL_FAST else "70B"
+                            ui.step(
+                                f"Repair {att.attempt_number}/{max_repairs}  ({model_label})",
+                                ok=ok,
+                                note="passing" if ok else "still failing",
+                            )
 
-            coverage_after = measure_coverage(repo_path)
-            outcome = process_test(
-                test, coverage_before=coverage_before, coverage_after=coverage_after
-            )
-            if outcome == "kept":
-                logger.info(
-                    "  kept %s (coverage %.2f -> %.2f)",
-                    test.test_file_path.name,
-                    coverage_before,
-                    coverage_after,
+                    report.repair_attempts_used += len(attempts)
+                    budget.charge(len(attempts))
+
+                    if repaired is None:
+                        if escalate:
+                            logger.info(
+                                "  repair exhausted — escalating to Claude (%d iters)",
+                                max_claude_iters,
+                            )
+                            if ui:
+                                ui.print_escalating(max_claude_iters)
+                            report.escalations_attempted += 1
+                            repaired = escalate_target(
+                                test,
+                                result,
+                                source,
+                                repo_path=repo_path,
+                                max_iters=max_claude_iters,
+                                claude_client=claude_client,
+                            )
+                            if repaired is None:
+                                target.status = TargetStatus.ESCALATED
+                                iter_count += 1
+                                stall += 1
+                                logger.info("  escalation failed: target marked ESCALATED")
+                                if ui:
+                                    ui.step("Escalation", ok=False, note="Claude could not fix it")
+                                continue
+                            logger.info("  escalation succeeded")
+                            if ui:
+                                ui.step("Escalation", ok=True, note="Claude fixed it")
+                            report.escalations_succeeded += 1
+                        else:
+                            target.status = TargetStatus.FAILED
+                            iter_count += 1
+                            stall += 1
+                            logger.info(
+                                "  failed: repair exhausted after %d attempt(s)", len(attempts)
+                            )
+                            if ui:
+                                ui.print_repair_exhausted()
+                            continue
+
+                    # repair succeeded — treat repaired test as the passing test
+                    logger.info("  repaired after %d attempt(s)", len(attempts))
+                    test = repaired
+
+                with (ui.spin("Measuring delta") if ui else contextlib.nullcontext()):
+                    coverage_after = _safe_measure_coverage(repo_path, test_file=test.test_file_path)
+                outcome = process_test(
+                    test, coverage_before=coverage_before, coverage_after=coverage_after
                 )
-                coverage_before = coverage_after
-                report.tests_kept += 1
-                stall = 0
-            else:
-                logger.info("  discarded: coverage did not rise (%.2f)", coverage_after)
-                report.tests_discarded += 1
+                if outcome == "kept":
+                    logger.info(
+                        "  kept %s (coverage %.2f -> %.2f)",
+                        test.test_file_path.name,
+                        coverage_before,
+                        coverage_after,
+                    )
+                    if ui:
+                        ui.print_target_kept(coverage_before, coverage_after)
+                    coverage_before = coverage_after
+                    report.tests_kept += 1
+                    stall = 0
+                else:
+                    logger.info("  discarded: coverage did not rise (%.2f)", coverage_after)
+                    if ui:
+                        ui.print_target_discarded(coverage_before, coverage_after)
+                    report.tests_discarded += 1
+                    stall += 1
+                    # Restore the coverage database from backup
+                    if backup_file.exists():
+                        import shutil
+                        shutil.copy2(backup_file, data_file)
+                        # Regenerate the coverage json report to reflect the restored state
+                        subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "coverage",
+                                "json",
+                                f"--data-file={data_file}",
+                                "-o",
+                                str(json_file),
+                            ],
+                            cwd=repo_path,
+                            capture_output=True,
+                            env=child_env(repo_path),
+                        )
+            except BudgetExhausted:
+                # Free tier is exhausted (429 ceiling). Stop cleanly so the report
+                # is still written.
+                logger.warning(
+                    "provider budget exhausted on target %s", target.qualified_name
+                )
+                target.status = TargetStatus.FAILED
+                report.stop_reason = "budget"
+                break
+            except Exception:
+                # One bad target must not abort the whole run.
+                logger.exception("target %s failed unexpectedly", target.qualified_name)
+                target.status = TargetStatus.FAILED
+                iter_count += 1
                 stall += 1
-        except BudgetExhausted:
-            # Free tier is exhausted (429 ceiling). Stop cleanly so the report
-            # is still written.
-            logger.warning(
-                "provider budget exhausted on target %s", target.qualified_name
-            )
-            target.status = TargetStatus.FAILED
-            report.stop_reason = "budget"
-            break
-        except Exception:
-            # One bad target must not abort the whole run.
-            logger.exception("target %s failed unexpectedly", target.qualified_name)
-            target.status = TargetStatus.FAILED
-            iter_count += 1
-            stall += 1
-            continue
+                continue
 
-        iter_count += 1
-    else:
-        report.stop_reason = "exhausted"
+            iter_count += 1
+        else:
+            report.stop_reason = "exhausted"
+    finally:
+        if backup_file.exists():
+            backup_file.unlink(missing_ok=True)
 
     report.coverage_after = coverage_before
     report.budget = f"{budget.used}/{max_llm_calls}"
