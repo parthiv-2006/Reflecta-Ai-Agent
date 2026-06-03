@@ -232,3 +232,23 @@ def test_repair_runs_test_with_repo_path_cwd(tmp_path):
     called_repo_path = mock_run.call_args.args[1]
     assert called_repo_path == tmp_path
     assert called_repo_path != test.test_file_path.parent
+
+
+def test_extract_relevant_source_trims_large_files():
+    from reflecta.repair import extract_relevant_source
+
+    short_source = "def add(a, b):\n    return a + b\n"
+    assert extract_relevant_source(short_source, "add", max_chars=100) == short_source
+
+    large_source = "import os\n" * 10
+    large_source += "#\n" * 150
+    large_source += "class Calculator:\n    def add(self, a, b):\n        return a + b\n"
+    large_source += "    def sub(self, a, b):\n        return a - b\n"
+
+    extracted = extract_relevant_source(large_source, "Calculator.add", max_chars=400)
+    assert "... [truncated for context size] ..." in extracted
+    assert "def add(self, a, b):" in extracted
+    assert "return a + b" in extracted
+    assert "def sub" not in extracted
+
+
