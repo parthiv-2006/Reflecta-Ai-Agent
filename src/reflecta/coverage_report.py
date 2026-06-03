@@ -9,9 +9,12 @@ Qualified-name conventions:
 """
 
 import ast
+import logging
 from pathlib import Path
 
 from reflecta.models import CoverageTarget
+
+logger = logging.getLogger("reflecta")
 
 
 def _build_class_map(tree: ast.Module) -> dict[int, str]:
@@ -19,7 +22,8 @@ def _build_class_map(tree: ast.Module) -> dict[int, str]:
     class_map: dict[int, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            for lineno in range(node.lineno, node.end_lineno + 1):
+            end = node.end_lineno or node.lineno
+            for lineno in range(node.lineno, end + 1):
                 class_map[lineno] = node.name
     return class_map
 
@@ -47,8 +51,16 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
         if not abs_path.exists():
             continue
 
-        source = abs_path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
+        # A single unparseable/unreadable file must never abort extraction —
+        # extract_targets runs once, before the loop's per-target error
+        # isolation, so an unguarded parse here would crash the whole run.
+        # Skip the bad file and keep extracting targets from the rest.
+        try:
+            source = abs_path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, OSError, ValueError) as exc:
+            logger.warning("skipping unparseable source file %s: %s", abs_path, exc)
+            continue
         class_map = _build_class_map(tree)
 
         missing_set = set(missing)
@@ -57,7 +69,8 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
 
-            func_lines = set(range(node.lineno, node.end_lineno + 1))
+            func_end = node.end_lineno or node.lineno
+            func_lines = set(range(node.lineno, func_end + 1))
             func_missing = sorted(missing_set & func_lines)
             if not func_missing:
                 continue

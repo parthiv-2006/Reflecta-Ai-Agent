@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from reflecta.config import load_dotenv, require_api_keys
+from reflecta.config import load_dotenv, require_credentials
 from reflecta.loop import run_loop
 from reflecta.report import read_report, write_report
 from reflecta.ui import ReflectaUI
@@ -18,7 +18,12 @@ def run(
     max_iters: int = typer.Option(10, help="Maximum targets to attempt per run."),
     max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
     max_llm_calls: int = typer.Option(
-        50, help="Stop before exceeding this many LLM calls (free-tier budget)."
+        50,
+        help=(
+            "Free-tier budget: stop before exceeding this many Gemini/Groq calls. "
+            "Claude escalation is a separate quota bounded by --max-claude-iters "
+            "and is NOT counted here."
+        ),
     ),
     target_coverage: float = typer.Option(
         None, help="Stop once total coverage reaches this percent."
@@ -30,7 +35,9 @@ def run(
         False, "--verbose", "-v", help="Log per-target decisions to stderr."
     ),
     escalate: bool = typer.Option(
-        False, "--escalate", help="Escalate stuck targets to Claude Agent SDK after repair exhaustion."
+        False,
+        "--escalate",
+        help="Escalate stuck targets to Claude Agent SDK after repair exhaustion.",
     ),
     max_claude_iters: int = typer.Option(
         3, help="Maximum Claude tool-use iterations per escalated target."
@@ -46,7 +53,7 @@ def run(
         logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
     load_dotenv()
     try:
-        require_api_keys(escalate=escalate)
+        require_credentials(escalate=escalate)
     except EnvironmentError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1)
@@ -81,23 +88,40 @@ def clean(
             f.unlink()
             removed += 1
 
-    # Also remove the reflecta-owned coverage workspace.
+    # Also remove the reflecta-owned coverage workspace. Capture whether it
+    # existed *before* removing it — checking .exists() afterwards is always
+    # False and would misreport a workspace-only clean.
     coverage_dir = path / ".reflecta"
-    if coverage_dir.exists():
+    workspace_removed = coverage_dir.exists()
+    if workspace_removed:
         shutil.rmtree(coverage_dir, ignore_errors=True)
 
-    if removed == 0 and not coverage_dir.exists():
+    if removed == 0 and not workspace_removed:
         typer.echo("Nothing to clean.")
         return
-    typer.echo(f"Removed {removed} generated test file(s).")
+
+    parts = [f"Removed {removed} generated test file(s)."]
+    if workspace_removed:
+        parts.append("Removed .reflecta/ workspace.")
+    typer.echo(" ".join(parts))
 
 
 @app.command()
 def report(
     path: Path = typer.Option(..., help="Path to the repository."),
-    last: bool = typer.Option(False, "--last", help="Print the last run report."),
+    last: bool = typer.Option(
+        False, "--last", help="Reprint the most recent run report (see SPEC)."
+    ),
 ) -> None:
-    """Print the run report from the last reflecta run."""
+    """Print the run report from the last reflecta run.
+
+    Pass ``--last`` to reprint the most recent report. Without it we show a
+    hint rather than guessing, so the flag drives real behaviour instead of
+    being decorative.
+    """
+    if not last:
+        typer.echo("Pass --last to reprint the most recent run report.")
+        return
     report_path = path / "reflecta-report.json"
     try:
         r = read_report(report_path)
@@ -105,3 +129,42 @@ def report(
         typer.echo(f"No report found at {report_path}", err=True)
         raise typer.Exit(code=1)
     ReflectaUI().summary(r, report_path)
+
+
+@app.command()
+def login(
+    token: str = typer.Option(
+        None, "--token", help="reflecta API token. Omit to be prompted (hidden)."
+    ),
+    proxy_url: str = typer.Option(
+        None, help="Override the proxy URL (advanced; defaults to the baked-in one)."
+    ),
+) -> None:
+    """Save a reflecta token so runs use the hosted proxy (no provider keys needed).
+
+    Stores credentials in ``~/.reflecta/credentials`` (0600). Once logged in,
+    ``reflecta run`` brokers all Gemini/Groq calls through the proxy on the
+    operator's keys — your code never leaves your machine.
+    """
+    from reflecta.llm import remote
+
+    if not token:
+        token = typer.prompt("reflecta token", hide_input=True)
+    token = token.strip()
+    if not token:
+        typer.echo("No token provided.", err=True)
+        raise typer.Exit(code=1)
+    path = remote.save_credentials(token, proxy_url=proxy_url)
+    typer.echo(f"Logged in. Credentials saved to {path}")
+    typer.echo(f"Proxy: {remote.get_proxy_url()}")
+
+
+@app.command()
+def logout() -> None:
+    """Remove stored reflecta credentials."""
+    from reflecta.llm import remote
+
+    if remote.clear_credentials():
+        typer.echo("Logged out.")
+    else:
+        typer.echo("Not logged in.")

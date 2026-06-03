@@ -172,3 +172,60 @@ def test_report_last_missing_file_exits_with_error(tmp_path):
     result = runner.invoke(app, ["report", "--last", "--path", str(tmp_path)])
 
     assert result.exit_code != 0 or "No report" in result.output
+
+
+# ---------------------------------------------------------------------------
+# login / logout (remote key-broker mode)
+# ---------------------------------------------------------------------------
+
+
+def test_login_saves_token_and_enables_remote(tmp_path, monkeypatch):
+    from reflecta.cli import app
+    from reflecta.llm import remote
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("REFLECTA_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.delenv("REFLECTA_TOKEN", raising=False)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["login", "--token", "tok_abc123"])
+
+    assert result.exit_code == 0, result.output
+    assert "Logged in" in result.output
+    assert remote.get_token() == "tok_abc123"
+    assert remote.remote_enabled() is True
+
+
+def test_logout_removes_credentials(tmp_path, monkeypatch):
+    from reflecta.cli import app
+    from reflecta.llm import remote
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("REFLECTA_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.delenv("REFLECTA_TOKEN", raising=False)
+    remote.save_credentials("tok_abc123")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["logout"])
+
+    assert result.exit_code == 0, result.output
+    assert "Logged out" in result.output
+    assert remote.remote_enabled() is False
+
+
+def test_run_in_remote_mode_needs_no_provider_keys(tmp_path, monkeypatch):
+    """With a token set, `run` must not demand GEMINI/GROQ keys."""
+    from reflecta.cli import app
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("REFLECTA_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("REFLECTA_TOKEN", "tok")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    report = _minimal_report(tmp_path)
+    with patch("reflecta.cli.run_loop", return_value=report):
+        runner = CliRunner()
+        result = runner.invoke(app, ["run", "--path", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output

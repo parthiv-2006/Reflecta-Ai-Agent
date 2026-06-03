@@ -167,7 +167,8 @@ def test_coverage_theater_caught_by_delta_gate(tmp_path):
             "reflecta.loop.run_test_isolated",
             return_value=RunResult(passed=True, traceback="", duration=0.1),
         ),
-        patch("reflecta.loop.measure_coverage", return_value=60.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(60.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(60.0, True)),
     ):
         report = run_loop(tmp_path, max_iters=5)
 

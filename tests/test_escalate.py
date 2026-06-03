@@ -1,4 +1,5 @@
 """Tests for the Claude Agent SDK escalation module (TDD — written before implementation)."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ from reflecta.models import CoverageTarget, GeneratedTest, RunResult, TargetStat
 # ---------------------------------------------------------------------------
 # Helpers — build fake anthropic response objects
 # ---------------------------------------------------------------------------
+
 
 def _text_block(text: str):
     return SimpleNamespace(type="text", text=text)
@@ -35,6 +37,7 @@ def _make_client(*responses):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def tmp_repo(tmp_path):
@@ -66,12 +69,15 @@ def failing_test(tmp_repo):
 
 @pytest.fixture
 def failing_result():
-    return RunResult(passed=False, traceback="AssertionError: assert 1 == 2", duration=0.1)
+    return RunResult(
+        passed=False, traceback="AssertionError: assert 1 == 2", duration=0.1
+    )
 
 
 # ---------------------------------------------------------------------------
 # Import guard — escalate must be importable (will fail until module exists)
 # ---------------------------------------------------------------------------
+
 
 def test_escalate_module_imports():
     from reflecta import escalate  # noqa: F401
@@ -80,6 +86,7 @@ def test_escalate_module_imports():
 # ---------------------------------------------------------------------------
 # Core behaviour tests
 # ---------------------------------------------------------------------------
+
 
 def test_escalate_succeeds_when_claude_writes_and_runs_passing_test(
     tmp_repo, failing_test, failing_result
@@ -91,10 +98,13 @@ def test_escalate_succeeds_when_claude_writes_and_runs_passing_test(
 
     responses = [
         # Round 1: Claude calls write_test then run_test
-        _response("tool_use", [
-            _tool_use_block("t1", "write_test", {"content": good_source}),
-            _tool_use_block("t2", "run_test", {}),
-        ]),
+        _response(
+            "tool_use",
+            [
+                _tool_use_block("t1", "write_test", {"content": good_source}),
+                _tool_use_block("t2", "run_test", {}),
+            ],
+        ),
         # Round 2: Claude sees PASSED, wraps up
         _response("end_turn", [_text_block("Done, test is passing.")]),
     ]
@@ -103,8 +113,12 @@ def test_escalate_succeeds_when_claude_writes_and_runs_passing_test(
     with patch("reflecta.runner.run_test_isolated") as mock_run:
         mock_run.return_value = RunResult(passed=True, traceback="", duration=0.05)
         result = escalate_target(
-            failing_test, failing_result, "def add(a,b): return a+b",
-            repo_path=tmp_repo, max_iters=3, claude_client=client,
+            failing_test,
+            failing_result,
+            "def add(a,b): return a+b",
+            repo_path=tmp_repo,
+            max_iters=3,
+            claude_client=client,
         )
 
     assert result is not None
@@ -119,16 +133,23 @@ def test_escalate_returns_none_when_max_iters_exhausted(
     from reflecta.escalate import escalate_target
 
     # Each round: Claude calls run_test but it always fails
-    one_round = _response("tool_use", [
-        _tool_use_block("t1", "run_test", {}),
-    ])
+    one_round = _response(
+        "tool_use",
+        [
+            _tool_use_block("t1", "run_test", {}),
+        ],
+    )
     client = _make_client(one_round, one_round, one_round)  # 3 rounds = max_iters
 
     with patch("reflecta.runner.run_test_isolated") as mock_run:
         mock_run.return_value = RunResult(passed=False, traceback="err", duration=0.0)
         result = escalate_target(
-            failing_test, failing_result, "source",
-            repo_path=tmp_repo, max_iters=3, claude_client=client,
+            failing_test,
+            failing_result,
+            "source",
+            repo_path=tmp_repo,
+            max_iters=3,
+            claude_client=client,
         )
 
     assert result is None
@@ -148,8 +169,12 @@ def test_escalate_marks_escalated_on_end_turn_without_passing_test(
     with patch("reflecta.runner.run_test_isolated") as mock_run:
         mock_run.return_value = RunResult(passed=False, traceback="err", duration=0.0)
         result = escalate_target(
-            failing_test, failing_result, "source",
-            repo_path=tmp_repo, max_iters=3, claude_client=client,
+            failing_test,
+            failing_result,
+            "source",
+            repo_path=tmp_repo,
+            max_iters=3,
+            claude_client=client,
         )
 
     assert result is None
@@ -172,9 +197,12 @@ def test_escalate_read_file_within_repo(tmp_repo, failing_test, failing_result):
                     if part.get("type") == "tool_result":
                         captured.append(part["content"])
             return _response("end_turn", [_text_block("done")])
-        return _response("tool_use", [
-            _tool_use_block("t1", "read_file", {"path": "mymod.py"}),
-        ])
+        return _response(
+            "tool_use",
+            [
+                _tool_use_block("t1", "read_file", {"path": "mymod.py"}),
+            ],
+        )
 
     client = MagicMock()
     client.messages.create.side_effect = lambda **kw: mock_create(**kw)
@@ -182,15 +210,44 @@ def test_escalate_read_file_within_repo(tmp_repo, failing_test, failing_result):
     with patch("reflecta.runner.run_test_isolated") as mock_run:
         mock_run.return_value = RunResult(passed=False, traceback="err", duration=0.0)
         escalate_target(
-            failing_test, failing_result, "source",
-            repo_path=tmp_repo, max_iters=3, claude_client=client,
+            failing_test,
+            failing_result,
+            "source",
+            repo_path=tmp_repo,
+            max_iters=3,
+            claude_client=client,
         )
 
     assert len(captured) >= 1
     assert "def add" in captured[0]
 
 
-def test_escalate_read_file_outside_repo_is_blocked(tmp_repo, failing_test, failing_result):
+def test_execute_tool_read_file_blocks_sibling_prefix(tmp_path, failing_test):
+    """AUDIT C2: a sibling dir whose name is a string prefix of the repo (e.g.
+    ``repo-secrets`` vs ``repo``) must be blocked. The old ``startswith`` check
+    let this through; ``is_relative_to`` does not."""
+    from reflecta.escalate import _execute_tool
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sibling = tmp_path / "repo-secrets"
+    sibling.mkdir()
+    (sibling / "secret.txt").write_text("TOP SECRET")
+
+    out = _execute_tool(
+        "read_file",
+        {"path": "../repo-secrets/secret.txt"},
+        test=failing_test,
+        repo_path=repo,
+    )
+
+    assert "Error: path is outside the repository root" in out
+    assert "TOP SECRET" not in out
+
+
+def test_escalate_read_file_outside_repo_is_blocked(
+    tmp_repo, failing_test, failing_result
+):
     """read_file for a path outside the repo returns an error, not the file content."""
     from reflecta.escalate import escalate_target
 
@@ -205,9 +262,12 @@ def test_escalate_read_file_outside_repo_is_blocked(tmp_repo, failing_test, fail
                     if part.get("type") == "tool_result":
                         captured.append(part["content"])
             return _response("end_turn", [_text_block("done")])
-        return _response("tool_use", [
-            _tool_use_block("t1", "read_file", {"path": "../../etc/passwd"}),
-        ])
+        return _response(
+            "tool_use",
+            [
+                _tool_use_block("t1", "read_file", {"path": "../../etc/passwd"}),
+            ],
+        )
 
     client = MagicMock()
     client.messages.create.side_effect = lambda **kw: mock_create(**kw)
@@ -215,23 +275,32 @@ def test_escalate_read_file_outside_repo_is_blocked(tmp_repo, failing_test, fail
     with patch("reflecta.runner.run_test_isolated") as mock_run:
         mock_run.return_value = RunResult(passed=False, traceback="err", duration=0.0)
         escalate_target(
-            failing_test, failing_result, "source",
-            repo_path=tmp_repo, max_iters=3, claude_client=client,
+            failing_test,
+            failing_result,
+            "source",
+            repo_path=tmp_repo,
+            max_iters=3,
+            claude_client=client,
         )
 
     assert len(captured) >= 1
     assert "Error" in captured[0]
 
 
-def test_escalate_write_test_updates_file_on_disk(tmp_repo, failing_test, failing_result):
+def test_escalate_write_test_updates_file_on_disk(
+    tmp_repo, failing_test, failing_result
+):
     """write_test tool actually writes the new content to the test file path."""
     from reflecta.escalate import escalate_target
 
     new_content = "def test_ok():\n    assert True\n"
     responses = [
-        _response("tool_use", [
-            _tool_use_block("t1", "write_test", {"content": new_content}),
-        ]),
+        _response(
+            "tool_use",
+            [
+                _tool_use_block("t1", "write_test", {"content": new_content}),
+            ],
+        ),
         _response("end_turn", [_text_block("done")]),
     ]
     client = _make_client(*responses)
@@ -239,8 +308,12 @@ def test_escalate_write_test_updates_file_on_disk(tmp_repo, failing_test, failin
     with patch("reflecta.runner.run_test_isolated") as mock_run:
         mock_run.return_value = RunResult(passed=False, traceback="err", duration=0.0)
         escalate_target(
-            failing_test, failing_result, "source",
-            repo_path=tmp_repo, max_iters=3, claude_client=client,
+            failing_test,
+            failing_result,
+            "source",
+            repo_path=tmp_repo,
+            max_iters=3,
+            claude_client=client,
         )
 
     assert failing_test.test_file_path.read_text() == new_content
@@ -255,8 +328,11 @@ def test_escalate_raises_clear_error_without_api_key(
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
         escalate_target(
-            failing_test, failing_result, "source",
-            repo_path=tmp_repo, claude_client=None,
+            failing_test,
+            failing_result,
+            "source",
+            repo_path=tmp_repo,
+            claude_client=None,
         )
 
 
@@ -272,6 +348,7 @@ def test_escalate_live_repairs_simple_failing_test(tmp_repo):
     import os
 
     from reflecta.config import load_dotenv
+
     load_dotenv()
     if not os.environ.get("ANTHROPIC_API_KEY"):
         pytest.skip("ANTHROPIC_API_KEY not set")
@@ -305,15 +382,20 @@ def test_escalate_live_repairs_simple_failing_test(tmp_repo):
 
     # claude_client=None → production httpx client built from ANTHROPIC_API_KEY.
     repaired = escalate_target(
-        test, result, src.read_text(),
-        repo_path=tmp_repo, max_iters=3,
+        test,
+        result,
+        src.read_text(),
+        repo_path=tmp_repo,
+        max_iters=3,
     )
 
     assert repaired is not None, "Claude should have fixed the wrong expected value"
     assert target.status == TargetStatus.KEPT
 
 
-def test_escalate_initial_prompt_contains_traceback(tmp_repo, failing_test, failing_result):
+def test_escalate_initial_prompt_contains_traceback(
+    tmp_repo, failing_test, failing_result
+):
     """The first message sent to Claude includes the failing traceback."""
     from reflecta.escalate import escalate_target
 
@@ -329,8 +411,12 @@ def test_escalate_initial_prompt_contains_traceback(tmp_repo, failing_test, fail
     with patch("reflecta.runner.run_test_isolated") as mock_run:
         mock_run.return_value = RunResult(passed=False, traceback="err", duration=0.0)
         escalate_target(
-            failing_test, failing_result, "source",
-            repo_path=tmp_repo, max_iters=3, claude_client=client,
+            failing_test,
+            failing_result,
+            "source",
+            repo_path=tmp_repo,
+            max_iters=3,
+            claude_client=client,
         )
 
     first_user_content = captured_messages[0][0]["content"]

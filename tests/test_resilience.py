@@ -66,7 +66,12 @@ def test_repair_budget_exhausted_marks_failed_continues(tmp_path):
         ),
         patch("reflecta.loop.repair_test", side_effect=fake_repair),
         patch(
-            "reflecta.loop.measure_coverage", side_effect=lambda *a: next(coverage_seq)
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10)
@@ -96,7 +101,8 @@ def test_generation_budget_exhausted_stops_loop(tmp_path):
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
-        patch("reflecta.loop.measure_coverage", return_value=50.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(50.0, True)),
     ):
         report = run_loop(tmp_path, max_iters=10)
 
@@ -127,8 +133,12 @@ def test_budget_tracker_stops_before_cap(tmp_path):
             return_value=RunResult(passed=True, traceback="", duration=0.1),
         ),
         patch(
-            "reflecta.loop.measure_coverage",
-            side_effect=lambda *a: next(coverage_iter),
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_iter), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_iter), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10, max_llm_calls=3)

@@ -64,7 +64,8 @@ def test_empty_repo_stop_reason_no_targets(tmp_path):
 
     with (
         patch("reflecta.loop.extract_targets", return_value=[]),
-        patch("reflecta.loop.measure_coverage", return_value=0.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(0.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(0.0, True)),
         patch("reflecta.loop.generate_test", side_effect=fake_generate),
     ):
         report = run_loop(tmp_path, max_iters=10)
@@ -79,7 +80,8 @@ def test_zero_coverage_gap_stop_reason_no_targets(tmp_path):
 
     with (
         patch("reflecta.loop.extract_targets", return_value=[]),
-        patch("reflecta.loop.measure_coverage", return_value=100.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(100.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(100.0, True)),
     ):
         report = run_loop(tmp_path, max_iters=10)
 
@@ -104,8 +106,12 @@ def test_no_existing_tests_loop_proceeds(tmp_path):
             return_value=RunResult(passed=True, traceback="", duration=0.1),
         ),
         patch(
-            "reflecta.loop.measure_coverage",
-            side_effect=lambda *a: next(coverage_seq),
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=5)
@@ -135,8 +141,12 @@ def test_broken_target_marked_failed_loop_continues(tmp_path):
             return_value=RunResult(passed=True, traceback="", duration=0.1),
         ),
         patch(
-            "reflecta.loop.measure_coverage",
-            side_effect=lambda *a: next(coverage_seq),
+            "reflecta.loop.measure_coverage_real",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
+        ),
+        patch(
+            "reflecta.loop.measure_coverage_isolated",
+            side_effect=lambda *a, **k: (next(coverage_seq), True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10)
@@ -167,7 +177,8 @@ def test_hanging_test_enters_repair_path(tmp_path):
             return_value=RunResult(passed=False, traceback="timeout", duration=30.0),
         ),
         patch("reflecta.loop.repair_test", side_effect=fake_repair),
-        patch("reflecta.loop.measure_coverage", return_value=50.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(50.0, True)),
     ):
         run_loop(tmp_path, max_iters=5)
 
@@ -219,7 +230,8 @@ def test_invalid_python_from_gemini_enters_repair_path(tmp_path):
         patch("reflecta.loop.extract_targets", return_value=targets),
         patch("reflecta.loop.generate_test", return_value=invalid_gen),
         patch("reflecta.loop.repair_test", side_effect=fake_repair),
-        patch("reflecta.loop.measure_coverage", return_value=50.0),
+        patch("reflecta.loop.measure_coverage_real", return_value=(50.0, True)),
+        patch("reflecta.loop.measure_coverage_isolated", return_value=(50.0, True)),
     ):
         report = run_loop(tmp_path, max_iters=5)
 
