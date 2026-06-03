@@ -185,6 +185,31 @@ Generated tests are written to `tests/_reflecta/` inside the target repo. Human-
 | `--verbose` / `-v` | off | Log each decision to stderr (selected, repaired, kept/discarded) |
 | `--escalate` | off | After Groq repair exhausts, escalate to Claude Sonnet with real tools (requires `ANTHROPIC_API_KEY`) |
 | `--max-claude-iters` | `3` | Maximum Claude tool-use iterations per escalated target |
+| `--python` | auto | Interpreter used to run generated tests. Defaults to auto-detecting the target repo's `.venv`/`venv`/`env`, then falling back to reflecta's own interpreter. Point this at a target venv's python when the repo's deps live in an isolated environment |
+| `--skip-entrypoints` / `--no-skip-entrypoints` | on | Skip module entrypoints (`main` and functions under `if __name__ == "__main__"`) — they drive the whole program from argv and aren't unit-testable. Use `--no-skip-entrypoints` to attempt them anyway |
+
+### Running against repos with their own dependencies
+
+reflecta runs generated tests against the **target repo's** interpreter, so the
+code's imports resolve. It auto-detects a `.venv`/`venv`/`env` inside the repo;
+if your repo keeps its dependencies elsewhere, point at the right interpreter:
+
+```bash
+python -m reflecta run --path /path/to/repo --python /path/to/repo/.venv/bin/python
+# Windows: --python C:\path\to\repo\.venv\Scripts\python.exe
+```
+
+Before the loop, reflecta preflights the targets' third-party imports and prints
+any that are missing under the chosen interpreter, so you know exactly what to
+install (or which `--python` to use) instead of every target failing silently.
+
+### Troubleshooting
+
+| Symptom | What it means | Fix |
+|---------|---------------|-----|
+| `LLM quota / rate limit hit` · `Stop reason: budget` | Gemini/Groq free-tier 429. The message names the provider, echoes the raw API text, and says whether it's a per-minute or **daily** cap | Wait ~60s (per-minute) or until the daily reset (per-day) and re-run with a smaller `--max-iters`; or use a paid key |
+| `target needs '<pkg>', which is not installed under <interpreter>` | The target's dependency isn't importable under the interpreter in use | Install it in that environment, or pass `--python <venv-python>` |
+| Targets reported `skipped` | Entrypoints (skipped by default) or structurally-unrunnable drafts (empty / missing import) that reached the regeneration cap | Expected. Use `--no-skip-entrypoints` to attempt `main`-style functions |
 
 ### View the last run report
 

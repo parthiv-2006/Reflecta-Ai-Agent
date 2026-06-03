@@ -141,6 +141,10 @@ and the gate stress test (14) remain open below.
 - [x] **17. Package:** clean `pyproject.toml`, publish to PyPI or pipx-from-GitHub. Publish command stays behind manual confirmation.
 - [x] **18. Clean-clone smoke test** with only the two free keys set.
 - [ ] **19. Real-repo demo:** run on 2-3 of your own repos (LeaseGuard is a candidate), capture real before/after numbers for the README. **[in progress]** — current activity is manual testing on the operator's own repositories in **direct (BYO-key) mode** (see Session status below).
+  - [x] **19a. Cross-repo robustness (2026-06-03):** fixed the "always fails on any non-example repo" bug. Was reflecta, not the target. Multi-block `strip_fences`; new `validation.py` (reject empty/no-test/missing-import drafts, regenerate once, else `SKIPPED`); new `environment.py` (target-venv auto-detect + `find_spec` import preflight); `runner` exit-code classification (`RunResult.failure_kind`); entrypoint detection + skip (`--skip-entrypoints`); utf-8 test writes; CLI `--python`. Verified live on LeaseGuard: valid tests now import+run. 206 tests pass.
+  - [x] **19b. Explicit error messages (2026-06-03):** `BudgetExhausted`/`RateLimitError` name the provider + HTTP 429 + raw API text + per-minute-vs-daily remedy; import_error names the missing module; expanded Stop-reason line.
+  - [ ] **19c.** Capture before/after coverage numbers for the README — BLOCKED on Gemini free-tier daily quota (RESOURCE_EXHAUSTED); retry after reset.
+  - [ ] **19d. (optional)** Make a repair-stage 429 stop the run cleanly like generation-stage does (currently it skips the target and continues into more 429s).
 - [x] **20. Tag `v0.1.0`.**
 
 ---
