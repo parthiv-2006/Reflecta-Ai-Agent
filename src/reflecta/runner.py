@@ -9,14 +9,25 @@ from pathlib import Path
 from reflecta.models import RunResult
 
 
-def child_env() -> dict[str, str]:
+def child_env(repo_path: Path | None = None) -> dict[str, str]:
     """Environment for subprocesses that execute LLM-generated tests.
 
     Strips every ``*_API_KEY`` so a generated (or prompt-injected) test cannot
     read the provider secrets that live in the parent process. The interpreter
     still needs PATH/SYSTEMROOT/PYTHONPATH, so we copy everything else.
     """
-    return {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+    env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+    if repo_path is not None:
+        repo_path = Path(repo_path).resolve()
+        if repo_path.exists():
+            from reflecta.loop import _source_dirs
+            sources = [str(repo_path / s) for s in _source_dirs(repo_path)]
+            sources.append(str(repo_path))
+            existing_pythonpath = os.environ.get("PYTHONPATH", "")
+            if existing_pythonpath:
+                sources.append(existing_pythonpath)
+            env["PYTHONPATH"] = os.pathsep.join(sources)
+    return env
 
 
 def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult:
@@ -27,7 +38,7 @@ def run_test(test_file: Path, repo_path: Path, timeout_s: int = 30) -> RunResult
         stderr=subprocess.PIPE,
         text=True,
         cwd=repo_path,
-        env=child_env(),
+        env=child_env(repo_path),
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout_s)
@@ -70,6 +81,10 @@ def run_test_isolated(
                 "venv",
                 ".reflecta",
                 ".pytest_cache",
+                "node_modules",
+                "build",
+                "dist",
+                ".omc",
             ),
         )
         return run_test(tmp_repo / rel, tmp_repo, timeout_s=timeout_s)
