@@ -7,6 +7,7 @@ from reflecta.config import load_dotenv, require_api_keys
 
 def test_load_dotenv_populates_environ(tmp_path, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     (tmp_path / ".env").write_text(
         'GEMINI_API_KEY="abc123"\n# comment\nGROQ_API_KEY=def\n'
     )

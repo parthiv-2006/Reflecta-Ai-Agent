@@ -2,15 +2,16 @@ import ast
 import contextlib
 import json
 import logging
+import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
-from reflecta.escalate import escalate_target
 from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.groq import MODEL_FAST
@@ -223,6 +224,94 @@ def _safe_measure_coverage(repo_path: Path, test_file: Path | None = None) -> fl
             return measure_coverage(repo_path)
 
 
+def measure_coverage_real(repo_path: Path) -> tuple[float, bool]:
+    """Baseline measurement, run in-place in the real tree.
+
+    Returns (percent_covered, suite_passed). Running in-place so the resulting
+    coverage.json carries real file paths that extract_targets can resolve.
+    Coverage artifacts land under .reflecta/ so the repo's own artifacts are
+    untouched.
+    """
+    repo_path = Path(repo_path).resolve()
+    data_file, json_file = coverage_paths(repo_path)
+    env = child_env(repo_path)
+    sources = _source_dirs(repo_path)
+    source_flags = [f"--source={s}" for s in sources]
+
+    seed_file = repo_path / "_reflecta_seed.py"
+    seed_file.write_text("pass\n", encoding="utf-8")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "coverage", "run", f"--data-file={data_file}",
+             *source_flags, str(seed_file)],
+            cwd=repo_path, capture_output=True, env=env,
+        )
+        proc = subprocess.run(
+            [sys.executable, "-m", "coverage", "run", f"--data-file={data_file}",
+             *source_flags, "--append", "-m", "pytest", "--tb=no", "-q"],
+            cwd=repo_path, capture_output=True, env=env,
+        )
+        subprocess.run(
+            [sys.executable, "-m", "coverage", "json", f"--data-file={data_file}",
+             "--ignore-errors", f"--omit={seed_file.name}", "-o", str(json_file)],
+            cwd=repo_path, capture_output=True, env=env,
+        )
+    finally:
+        seed_file.unlink(missing_ok=True)
+    passed = proc.returncode == 0
+    if not json_file.exists():
+        return 0.0, passed
+    data = json.loads(json_file.read_text(encoding="utf-8"))
+    return data.get("totals", {}).get("percent_covered", 0.0), passed
+
+
+def measure_coverage_isolated(
+    repo_path: Path, *, timeout_s: int = 300
+) -> tuple[float, bool]:
+    """Run the full suite in a disposable copy; return (percent_covered, passed).
+
+    The generated test executes only against the throwaway copy so a destructive
+    or hanging test cannot corrupt the real working tree. Returns (0.0, False)
+    on timeout so a hung suite is never mistaken for a coverage gain.
+    """
+    repo_path = Path(repo_path).resolve()
+    tmp_root = Path(tempfile.mkdtemp(prefix="reflecta_cov_"))
+    try:
+        tmp_repo = tmp_root / "repo"
+        shutil.copytree(
+            repo_path,
+            tmp_repo,
+            symlinks=True,
+            ignore=shutil.ignore_patterns(
+                ".git", "__pycache__", "*.pyc", ".venv", "venv",
+                ".reflecta", ".pytest_cache", "node_modules", "build", "dist", ".omc",
+            ),
+        )
+        data_file = tmp_root / ".coverage"
+        json_file = tmp_root / "coverage.json"
+        env = child_env(tmp_repo)
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "coverage", "run", f"--data-file={data_file}",
+                 "-m", "pytest", "--tb=no", "-q"],
+                cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
+            )
+        except subprocess.TimeoutExpired:
+            return 0.0, False
+        passed = proc.returncode == 0
+        subprocess.run(
+            [sys.executable, "-m", "coverage", "json", f"--data-file={data_file}",
+             "--ignore-errors", "-o", str(json_file)],
+            cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
+        )
+        if not json_file.exists():
+            return 0.0, passed
+        data = json.loads(json_file.read_text(encoding="utf-8"))
+        return data.get("totals", {}).get("percent_covered", 0.0), passed
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 def process_test(
     test: GeneratedTest, *, coverage_before: float, coverage_after: float
 ) -> str:
@@ -266,7 +355,7 @@ def run_loop(
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
 
     with (ui.spin("Measuring baseline coverage") if ui else contextlib.nullcontext()):
-        coverage_before = _safe_measure_coverage(repo_path)
+        coverage_before, baseline_suite_passed = measure_coverage_real(repo_path)
 
     _, coverage_json_path = coverage_paths(repo_path)
     if coverage_json_path.exists():
@@ -312,9 +401,6 @@ def run_loop(
     iter_count = 0
     stall = 0  # consecutive targets that did not raise coverage
 
-    data_file, json_file = coverage_paths(repo_path)
-    backup_file = data_file.with_name(".coverage.backup")
-
     try:
         while (target := select_next(targets)) is not None:
             if target_coverage is not None and coverage_before >= target_coverage:
@@ -342,11 +428,6 @@ def run_loop(
                 len(target.missing_lines),
                 target.priority,
             )
-
-            # Backup the current coverage database
-            if data_file.exists():
-                import shutil
-                shutil.copy2(data_file, backup_file)
 
             source = (
                 target.file_path.read_text(encoding="utf-8")
@@ -444,6 +525,7 @@ def run_loop(
 
                     if repaired is None:
                         if escalate:
+                            from reflecta.escalate import escalate_target  # lazy: opt-in dep
                             logger.info(
                                 "  repair exhausted — escalating to Claude (%d iters)",
                                 max_claude_iters,
@@ -487,7 +569,22 @@ def run_loop(
                     test = repaired
 
                 with (ui.spin("Measuring delta") if ui else contextlib.nullcontext()):
-                    coverage_after = _safe_measure_coverage(repo_path, test_file=test.test_file_path)
+                    coverage_after, suite_passed = measure_coverage_isolated(repo_path)
+
+                # H2: a test that passes in isolation but breaks the full suite
+                # indicates a fixture/ordering/state collision. Discard it unless
+                # the baseline suite was already red (then we cannot blame the candidate).
+                if baseline_suite_passed and not suite_passed:
+                    test.test_file_path.unlink(missing_ok=True)
+                    test.target.status = TargetStatus.DISCARDED
+                    report.tests_discarded += 1
+                    stall += 1
+                    iter_count += 1
+                    logger.info("  discarded: test passes alone but breaks the full suite")
+                    if ui:
+                        ui.print_target_discarded(coverage_before, coverage_after)
+                    continue
+
                 outcome = process_test(
                     test, coverage_before=coverage_before, coverage_after=coverage_after
                 )
@@ -509,26 +606,6 @@ def run_loop(
                         ui.print_target_discarded(coverage_before, coverage_after)
                     report.tests_discarded += 1
                     stall += 1
-                    # Restore the coverage database from backup
-                    if backup_file.exists():
-                        import shutil
-                        shutil.copy2(backup_file, data_file)
-                        # Regenerate the coverage json report to reflect the restored state
-                        subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "coverage",
-                                "json",
-                                f"--data-file={data_file}",
-                                "--ignore-errors",
-                                "-o",
-                                str(json_file),
-                            ],
-                            cwd=repo_path,
-                            capture_output=True,
-                            env=child_env(repo_path),
-                        )
             except BudgetExhausted:
                 # Free tier is exhausted (429 ceiling). Stop cleanly so the report
                 # is still written.
@@ -552,8 +629,7 @@ def run_loop(
         else:
             report.stop_reason = "exhausted"
     finally:
-        if backup_file.exists():
-            backup_file.unlink(missing_ok=True)
+        pass
 
     report.coverage_after = coverage_before
     report.budget = f"{budget.used}/{max_llm_calls}"
