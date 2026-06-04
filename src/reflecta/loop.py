@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -353,6 +354,86 @@ def process_test(
     return "discarded"
 
 
+@dataclass
+class TriagePlan:
+    """A no-LLM preview of what a run would attempt. Built by ``triage_repo``."""
+
+    interpreter: str
+    coverage_before: float
+    targets: list  # list[CoverageTarget] with .status pre-marked
+    missing_deps: list[str] = field(default_factory=list)
+
+    @property
+    def attempt(self) -> list:
+        return [t for t in self.targets if t.status == TargetStatus.PENDING]
+
+    def count(self, level: str) -> int:
+        return sum(1 for t in self.targets if t.testability == level)
+
+    @property
+    def n_entrypoints(self) -> int:
+        return sum(1 for t in self.targets if t.is_entrypoint)
+
+
+def triage_repo(
+    repo_path: Path,
+    *,
+    python_exe: str | None = None,
+    skip_entrypoints: bool = True,
+    attempt_risky: bool = False,
+) -> TriagePlan:
+    """Plan a run WITHOUT calling any LLM: measure baseline coverage, extract +
+    statically classify targets, preflight imports, and mark which targets would
+    be attempted vs skipped. Used by ``reflecta triage`` and ``run --dry-run``.
+
+    Running coverage executes the repo's *own* test suite (no quota), never the
+    generated tests, and never a provider.
+    """
+    from reflecta.environment import (
+        collect_third_party_roots,
+        detect_interpreter,
+        preflight_imports,
+    )
+
+    repo_path = Path(repo_path).resolve()
+    interpreter = python_exe or detect_interpreter(repo_path)
+    coverage_before, _ = measure_coverage_real(repo_path, python_exe=interpreter)
+
+    _, coverage_json_path = coverage_paths(repo_path)
+    coverage_json = (
+        json.loads(coverage_json_path.read_text(encoding="utf-8"))
+        if coverage_json_path.exists()
+        else {}
+    )
+    targets = extract_targets(coverage_json, repo_path)
+
+    missing_deps: list[str] = []
+    if targets:
+        target_files = sorted({t.file_path for t in targets})
+        missing_deps = preflight_imports(
+            interpreter, collect_third_party_roots(target_files, repo_path)
+        )
+
+    # Mark what a run would skip — same rules as run_loop, but no mutation of any
+    # report and no LLM calls.
+    for t in targets:
+        if t.is_entrypoint and skip_entrypoints:
+            t.status = TargetStatus.SKIPPED
+        elif t.testability == "blocked":
+            t.status = TargetStatus.SKIPPED
+        elif t.testability == "risky" and not attempt_risky:
+            t.status = TargetStatus.SKIPPED
+        else:
+            t.status = TargetStatus.PENDING
+
+    return TriagePlan(
+        interpreter=interpreter,
+        coverage_before=coverage_before,
+        targets=targets,
+        missing_deps=missing_deps,
+    )
+
+
 def run_loop(
     repo_path: Path,
     *,
@@ -368,6 +449,7 @@ def run_loop(
     claude_client=None,
     python_exe: str | None = None,
     skip_entrypoints: bool = True,
+    attempt_risky: bool = False,
     ui: "ReflectaUI | None" = None,
 ) -> RunReport:
     """Main orchestration loop.
@@ -470,6 +552,42 @@ def run_loop(
             logger.info("skipped %d entrypoint target(s)", n_skipped)
             if ui:
                 ui.print_entrypoints_skipped(n_skipped)
+
+    # Static testability triage (no LLM, no execution): "blocked" targets live
+    # in modules that can't even be imported in a test (live creds / I/O at
+    # import); "risky" targets directly do network/DB/IO and are a poor quota
+    # bet. Both are skipped before any provider call so quota goes to functions
+    # that can actually yield a kept test.
+    n_blocked = 0
+    n_risky_skipped = 0
+    for t in targets:
+        if t.status != TargetStatus.PENDING:
+            continue
+        if t.testability == "blocked":
+            t.status = TargetStatus.SKIPPED
+            report.tests_skipped += 1
+            n_blocked += 1
+        elif t.testability == "risky" and not attempt_risky:
+            t.status = TargetStatus.SKIPPED
+            report.tests_skipped += 1
+            n_risky_skipped += 1
+
+    n_testable = sum(1 for t in targets if t.status == TargetStatus.PENDING)
+    if ui:
+        ui.print_testability_summary(
+            testable=n_testable,
+            risky=n_risky_skipped,
+            blocked=n_blocked,
+            attempt_risky=attempt_risky,
+        )
+
+    # Nothing attemptable → stop before spending a single LLM call.
+    if n_testable == 0:
+        report.stop_reason = "no_testable_targets"
+        logger.info("no unit-testable targets; nothing sent to the LLM")
+        if ui:
+            ui.print_no_testable_targets(targets)
+        return report
 
     if ui:
         ui.print_loop_header(max_iters)
