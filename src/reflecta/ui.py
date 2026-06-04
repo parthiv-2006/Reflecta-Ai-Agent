@@ -76,6 +76,93 @@ class ReflectaUI:
             "--python <venv-python>. Tests importing these will be skipped.[/]"
         )
 
+    def print_testability_summary(
+        self, *, testable: int, risky: int, blocked: int, attempt_risky: bool
+    ) -> None:
+        bits = [f"[green]{testable}[/] testable"]
+        if risky:
+            verb = "attempting" if attempt_risky else "skipped"
+            bits.append(f"{risky} risky ({verb})")
+        if blocked:
+            bits.append(f"{blocked} blocked")
+        self._c.print("  [bold]Testability[/]  " + "  [dim]·[/]  ".join(bits))
+        if blocked or risky:
+            self._c.print(
+                "  [dim]risky = direct network/DB/IO · blocked = needs creds/IO "
+                "at import. Skipped before any LLM call (no quota used).[/]"
+            )
+
+    def print_no_testable_targets(self, targets) -> None:
+        blocked = sum(1 for t in targets if t.testability == "blocked")
+        risky = sum(1 for t in targets if t.testability == "risky")
+        entry = sum(1 for t in targets if t.is_entrypoint)
+        self._c.print()
+        self._c.print(
+            "  [yellow]No unit-testable targets — nothing sent to the LLM.[/]"
+        )
+        self._c.print(
+            f"  [dim]{len(targets)} target(s): {blocked} blocked, {risky} risky, "
+            f"{entry} entrypoint(s). These are dominated by network/DB/IO and "
+            f"aren't unit-testable without heavy mocking.[/]"
+        )
+        self._c.print(
+            "  [dim]reflecta is best on pure/logic functions. Try --attempt-risky "
+            "to force the risky ones, or point it at a more unit-testable repo.[/]"
+        )
+
+    def print_triage(self, plan, *, attempt_risky: bool) -> None:
+        """Render a no-LLM triage/dry-run report."""
+        from reflecta.models import TargetStatus
+
+        self._c.print()
+        self._c.print(Rule(style="dim"))
+        self._c.print("  [bold cyan]Triage[/] [dim](no LLM calls — preview only)[/]")
+        self._c.print(
+            f"  Baseline [bold]{plan.coverage_before:.1f}%[/]"
+            f"  [dim]·[/]  interpreter [dim]{plan.interpreter}[/]"
+        )
+        if plan.missing_deps:
+            self._c.print(
+                f"  [yellow]Missing deps[/]: {', '.join(plan.missing_deps)} "
+                f"[dim](install or use --python; affected targets will be skipped)[/]"
+            )
+        self._c.print(
+            f"  [bold]{len(plan.attempt)}[/] would be attempted  [dim]·[/]  "
+            f"[green]{plan.count('testable')}[/] testable  [dim]·[/]  "
+            f"{plan.count('risky')} risky  [dim]·[/]  "
+            f"{plan.count('blocked')} blocked  [dim]·[/]  "
+            f"{plan.n_entrypoints} entrypoint(s)"
+        )
+        self._c.print(Rule(style="dim"))
+
+        attempt = plan.attempt
+        if attempt:
+            self._c.print("  [bold green]Would attempt:[/]")
+            for t in attempt[:40]:
+                self._c.print(
+                    f"    [green]✓[/] {t.file_path.name} [dim]::[/] {t.qualified_name}"
+                    f"  [dim]({len(t.missing_lines)} lines)[/]"
+                )
+            if len(attempt) > 40:
+                self._c.print(f"    [dim]… and {len(attempt) - 40} more[/]")
+
+        skipped = [t for t in plan.targets if t.status == TargetStatus.SKIPPED]
+        if skipped:
+            self._c.print()
+            self._c.print("  [bold yellow]Would skip (no quota spent):[/]")
+            for t in skipped[:40]:
+                if t.is_entrypoint:
+                    why = "entrypoint (main/__main__)"
+                else:
+                    why = t.testability_reason or t.testability
+                self._c.print(
+                    f"    [yellow]–[/] {t.file_path.name} [dim]::[/] {t.qualified_name}"
+                    f"  [dim]{why}[/]"
+                )
+            if len(skipped) > 40:
+                self._c.print(f"    [dim]… and {len(skipped) - 40} more[/]")
+        self._c.print()
+
     def print_entrypoints_skipped(self, n: int) -> None:
         self._c.print(
             f"  [dim]Skipped {n} entrypoint target{'s' if n != 1 else ''} "
@@ -200,6 +287,10 @@ class ReflectaUI:
             "stalled": "stalled — several targets in a row did not raise coverage.",
             "target_reached": "target_reached — requested coverage met.",
             "no_targets": "no_targets — no coverage gaps found in named functions.",
+            "no_testable_targets": (
+                "no_testable_targets — every gap is in network/DB/IO code that "
+                "isn't unit-testable. Nothing sent to the LLM (no quota used)."
+            ),
             "exhausted": "exhausted — all targets processed.",
         }
         self._c.print(

@@ -187,6 +187,33 @@ Generated tests are written to `tests/_reflecta/` inside the target repo. Human-
 | `--max-claude-iters` | `3` | Maximum Claude tool-use iterations per escalated target |
 | `--python` | auto | Interpreter used to run generated tests. Defaults to auto-detecting the target repo's `.venv`/`venv`/`env`, then falling back to reflecta's own interpreter. Point this at a target venv's python when the repo's deps live in an isolated environment |
 | `--skip-entrypoints` / `--no-skip-entrypoints` | on | Skip module entrypoints (`main` and functions under `if __name__ == "__main__"`) — they drive the whole program from argv and aren't unit-testable. Use `--no-skip-entrypoints` to attempt them anyway |
+| `--attempt-risky` | off | Also attempt "risky" targets (functions that directly do network/DB/browser/subprocess I/O). Off by default to save quota — the free models rarely repair these |
+| `--dry-run` | off | Preview what would be attempted vs skipped (static triage + preflight) **without calling any LLM**. No tests generated |
+
+### Will it work on my repo? (preview with zero quota)
+
+Some functions can never yield a kept test no matter what the model writes — a
+module that needs live credentials/network *at import* can't even be collected,
+and a function whose whole job is a network/DB/browser/subprocess call needs
+mocking the free models reliably fail at. reflecta classifies every target
+**statically (AST only — no LLM, no execution)** as **testable**, **risky**
+(direct network/DB/IO), or **blocked** (module needs creds/IO at import), and
+skips the un-attemptable ones *before* spending any quota.
+
+Preview exactly what a run would do, spending **zero** LLM quota:
+
+```bash
+python -m reflecta triage --path /path/to/repo
+# or, equivalently, on the run command:
+python -m reflecta run --path /path/to/repo --dry-run
+```
+
+You'll get a per-target breakdown of what would be attempted vs skipped (with
+reasons like `directly performs network I/O`). If everything is I/O-bound,
+reflecta tells you it isn't a good fit and exits without touching the LLM. A
+function that receives its client/session as a **parameter** (dependency
+injection) is treated as testable. Use `--attempt-risky` to force the risky
+ones.
 
 ### Running against repos with their own dependencies
 

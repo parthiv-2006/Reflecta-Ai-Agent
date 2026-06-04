@@ -60,6 +60,23 @@ def run(
             "budget. Pass --no-skip-entrypoints to attempt them anyway."
         ),
     ),
+    attempt_risky: bool = typer.Option(
+        False,
+        "--attempt-risky",
+        help=(
+            "Also attempt 'risky' targets (functions that directly do "
+            "network/DB/browser/subprocess I/O). Off by default to save LLM "
+            "quota, since the free models rarely repair these."
+        ),
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=(
+            "Preview what would be attempted vs skipped (static triage + "
+            "preflight) WITHOUT calling any LLM. No tests are generated."
+        ),
+    ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
@@ -70,6 +87,23 @@ def run(
         # bleed into user-facing output when a target fails unexpectedly.
         logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
     load_dotenv()
+
+    # --dry-run: static triage + preflight only. No LLM, so no credentials
+    # required. Prints the plan and exits.
+    if dry_run:
+        from reflecta.loop import triage_repo
+
+        ui = ReflectaUI()
+        ui.banner()
+        plan = triage_repo(
+            path,
+            python_exe=python,
+            skip_entrypoints=skip_entrypoints,
+            attempt_risky=attempt_risky,
+        )
+        ui.print_triage(plan, attempt_risky=attempt_risky)
+        return
+
     try:
         require_credentials(escalate=escalate)
     except EnvironmentError as exc:
@@ -88,11 +122,51 @@ def run(
         max_claude_iters=max_claude_iters,
         python_exe=python,
         skip_entrypoints=skip_entrypoints,
+        attempt_risky=attempt_risky,
         ui=ui,
     )
     report_path = path / "reflecta-report.json"
     write_report(report, report_path)
     ui.summary(report, report_path)
+
+
+@app.command()
+def triage(
+    path: Path = typer.Option(..., help="Path to the repository to analyse."),
+    attempt_risky: bool = typer.Option(
+        False,
+        "--attempt-risky",
+        help="Count risky (network/DB/IO) targets as attemptable in the preview.",
+    ),
+    skip_entrypoints: bool = typer.Option(
+        True,
+        "--skip-entrypoints/--no-skip-entrypoints",
+        help="Treat module entrypoints as skipped in the preview.",
+    ),
+    python: str = typer.Option(
+        None, "--python", help="Interpreter to plan against (defaults to auto-detect)."
+    ),
+) -> None:
+    """Preview what reflecta would attempt vs skip — WITHOUT calling any LLM.
+
+    Runs the repo's own test suite under coverage, statically classifies every
+    target's testability, and preflights imports. No tests are generated and no
+    provider quota is spent. Use this to check whether a repo/file is a good fit
+    before running for real.
+    """
+    from reflecta.loop import triage_repo
+
+    path = path.resolve()
+    logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
+    ui = ReflectaUI()
+    ui.banner()
+    plan = triage_repo(
+        path,
+        python_exe=python,
+        skip_entrypoints=skip_entrypoints,
+        attempt_risky=attempt_risky,
+    )
+    ui.print_triage(plan, attempt_risky=attempt_risky)
 
 
 @app.command()

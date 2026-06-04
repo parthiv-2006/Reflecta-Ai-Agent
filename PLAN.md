@@ -145,7 +145,8 @@ and the gate stress test (14) remain open below.
   - [x] **19b. Explicit error messages (2026-06-03):** `BudgetExhausted`/`RateLimitError` name the provider + HTTP 429 + raw API text + per-minute-vs-daily remedy; import_error names the missing module; expanded Stop-reason line.
   - [x] **19c. Token/TPM & HTTP 413 fix (2026-06-04):** Groq repair hit HTTP 413 "request too large" (8B prompt 8486 tok > 6000 TPM), misclassified as a retryable 429. New `llm/limits.py` (verified free-tier RPM/RPD/TPM/TPD + token budgeting); `RequestTooLarge` exception (checked before 429, never retried); `repair._budget_repair_prompt` sizes prompts to model TPM; 413 escalates 8B→70B once. Verified live on leaseguard — no more 413. 217 tests pass.
   - [x] **19d. Repair-stage rate limit stops the run cleanly** (was optional follow-up) — both generation- and repair-stage `BudgetExhausted` now stop with `stop_reason=budget`.
-  - [ ] **19e.** Capture before/after coverage numbers for the README — needs a run that reaches unit-testable targets (use higher `--max-iters` so it gets past leaseguard's big network/IO functions, or point at a more testable repo). Watch the Gemini daily RPD=250 cap.
+  - [x] **19e. Static testability triage (2026-06-04):** new `testability.py` classifies every target (AST only, no LLM) as testable/risky/blocked. `run_loop` skips blocked (always) + risky (default) before any provider call; stops with `no_testable_targets` if nothing is attemptable. New `reflecta triage --path` and `run --dry-run` give a zero-quota preview; `--attempt-risky` overrides. Verified on leaseguard: 74 testable attempted, 29 risky + 8 entrypoints skipped, no quota spent. 234 tests pass.
+  - [ ] **19f.** Capture before/after coverage numbers for the README — now that triage targets the 74 unit-testable functions, run with adequate `--max-iters` and grab the delta. Watch the Gemini daily RPD=250 cap.
 - [x] **20. Tag `v0.1.0`.**
 
 ---

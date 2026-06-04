@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 
 from reflecta.models import CoverageTarget
+from reflecta.testability import classify_target
 
 logger = logging.getLogger("reflecta")
 
@@ -113,6 +114,8 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
             class_name = class_map.get(node.lineno)
             qualified_name = f"{class_name}.{node.name}" if class_name else node.name
 
+            verdict = classify_target(source, qualified_name)
+
             targets.append(
                 CoverageTarget(
                     file_path=abs_path,
@@ -120,6 +123,8 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
                     missing_lines=func_missing,
                     priority=float(len(func_missing)),
                     is_entrypoint=node.name in entrypoints,
+                    testability=verdict.level,
+                    testability_reason=verdict.reason,
                 )
             )
 
