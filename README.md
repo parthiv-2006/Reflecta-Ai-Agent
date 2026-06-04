@@ -208,6 +208,7 @@ install (or which `--python` to use) instead of every target failing silently.
 | Symptom | What it means | Fix |
 |---------|---------------|-----|
 | `LLM quota / rate limit hit` · `Stop reason: budget` | Gemini/Groq free-tier 429. The message names the provider, echoes the raw API text, and says whether it's a per-minute or **daily** cap | Wait ~60s (per-minute) or until the daily reset (per-day) and re-run with a smaller `--max-iters`; or use a paid key |
+| `request too large for model TPM` during repair | The repair prompt exceeded the model's free-tier **tokens-per-minute** budget (HTTP 413). reflecta now sizes prompts to fit and escalates 8B→70B automatically, so you should rarely see this | Usually self-resolves (auto-trim + model escalation). If it persists, the target's source/traceback is unusually large — the target is marked `failed` and the run continues |
 | `target needs '<pkg>', which is not installed under <interpreter>` | The target's dependency isn't importable under the interpreter in use | Install it in that environment, or pass `--python <venv-python>` |
 | Targets reported `skipped` | Entrypoints (skipped by default) or structurally-unrunnable drafts (empty / missing import) that reached the regeneration cap | Expected. Use `--no-skip-entrypoints` to attempt `main`-style functions |
 

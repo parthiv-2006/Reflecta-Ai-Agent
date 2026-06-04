@@ -53,7 +53,8 @@ CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> Ge
 - **pytest Exit-Code Classification**: `runner._classify_failure` maps non-zero exits to `RunResult.failure_kind` (`no_tests`=5, `import_error`=ModuleNotFoundError/ImportError in traceback, `collection_error`=2, else `test_failure`). The loop routes `no_tests`/`import_error` straight to `SKIPPED` — repair can't fix an empty suite or a missing dependency.
 - **Entrypoint Skipping**: `coverage_report._detect_entrypoints` flags `main` and functions called under `if __name__ == "__main__"`. `select_next` ranks them last and `run_loop` skips them by default (`--no-skip-entrypoints` to attempt). They drive the whole program from argv and aren't unit-testable.
 - **UTF-8 Test Writes**: Generated/repaired tests are written with `encoding="utf-8"`. They routinely contain non-ASCII (sample strings for text-processing code); the platform default (cp1252 on Windows) raised `UnicodeEncodeError`, swallowed by the loop as a silent FAILED.
-- **Explicit Failure Messages**: `RateLimitError(message, provider=...)` carries a human provider label; `provider.call_with_retry` raises `BudgetExhausted` with a message that names the provider (Gemini/Groq/proxy), states HTTP 429, echoes the raw API text, and classifies per-minute vs daily via `provider.explain_rate_limit`. The loop's two `BudgetExhausted` handlers render this through `ui.print_budget_exhausted(detail, stage=...)`; `import_error` skips name the exact missing module (`_missing_module_name`); the summary's Stop-reason line is expanded to a plain-English explanation. When adding a provider/raise site, always pass `provider=` and keep the raw API message in the exception chain.
+- **Explicit Failure Messages**: `RateLimitError(message, provider=...)` carries a human provider label; `provider.call_with_retry` raises `BudgetExhausted` with a message that names the provider (Gemini/Groq/proxy), states HTTP 429, echoes the raw API text, and classifies per-minute vs daily via `provider.explain_rate_limit`. The loop's two `BudgetExhausted` handlers render this through `ui.print_budget_exhausted(detail, stage=...)` and both STOP the run (generation- and repair-stage); `import_error` skips name the exact missing module (`_missing_module_name`); the summary's Stop-reason line is expanded to a plain-English explanation. When adding a provider/raise site, always pass `provider=` and keep the raw API message in the exception chain.
+- **HTTP 413 ≠ 429 — size requests to the model's TPM**: Free-tier limits live in `llm/limits.py` (verified: Groq `llama-3.1-8b-instant` TPM=6000, `llama-3.3-70b-versatile` TPM=12000; Gemini Flash TPM=250k but RPD=250). A single repair request bigger than a model's **tokens-per-minute** budget returns **HTTP 413 "request too large"**, NOT 429 — and waiting can't fix it. Groq's 413 body mentions "tokens per minute" and a `rate_limit_exceeded` code, so `groq.py` must check 413 **before** the 429 heuristic and raise `RequestTooLarge` (which `call_with_retry` never retries). `repair._budget_repair_prompt` trims source/test/traceback to `limits.request_char_budget(model)` before sending; on a 413 the repair re-tries on the higher-TPM 70B once, else records a clean FAIL. Never send an untrimmed prompt to Groq.
 
 
 ## Repository structure
@@ -82,7 +83,8 @@ reflecta/
 │       ├── prompts.py           # prompt templates (no logic, just strings)
 │       └── llm/
 │           ├── __init__.py
-│           ├── provider.py      # retry wrapper + BudgetExhausted (all calls go here)
+│           ├── provider.py      # retry wrapper + BudgetExhausted/RequestTooLarge (all calls go here)
+│           ├── limits.py        # free-tier RPM/RPD/TPM/TPD per model + token budgeting (single source of truth)
 │           ├── gemini.py        # Gemini Flash client
 │           └── groq.py          # Groq client
 ├── tests/
