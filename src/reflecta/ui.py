@@ -123,7 +123,8 @@ class ReflectaUI:
 
     def print_repair_exhausted(self) -> None:
         self._c.print(
-            "        [yellow]Repair budget exhausted[/] — [dim]SKIPPED[/]"
+            "        [yellow]Repair attempts exhausted[/] — [dim]FAILED "
+            "(test ran but couldn't be fixed in the allotted attempts)[/]"
         )
 
     def print_budget_exhausted(self, detail: str, *, stage: str = "") -> None:

@@ -630,21 +630,32 @@ def run_loop(
                         )
                         if ui:
                             ui.print_budget_exhausted(str(exc), stage="repair")
+                        # A repair-stage rate limit means the next target would
+                        # almost certainly hit it too. Stop cleanly (like the
+                        # generation-stage handler) instead of failing target by
+                        # target, so the report is written and the user can
+                        # re-run once the limit resets.
                         test.test_file_path.unlink(missing_ok=True)
                         target.status = TargetStatus.FAILED
                         iter_count += 1
-                        stall += 1
-                        continue
+                        report.stop_reason = "budget"
+                        break
 
                     # Print per-attempt results now that we have the full list
                     if ui:
                         for att in attempts:
                             ok = att.result == RepairResult.PASS
                             model_label = "8B" if att.model_used == MODEL_FAST else "70B"
+                            if ok:
+                                note = "passing"
+                            elif att.traceback.startswith("request too large"):
+                                note = "request too large for model TPM, even after trimming"
+                            else:
+                                note = "still failing"
                             ui.step(
                                 f"Repair {att.attempt_number}/{max_repairs}  ({model_label})",
                                 ok=ok,
-                                note="passing" if ok else "still failing",
+                                note=note,
                             )
 
                     report.repair_attempts_used += len(attempts)

@@ -33,8 +33,13 @@ def _good_test(target: CoverageTarget, tmp_path: Path) -> GeneratedTest:
     )
 
 
-def test_repair_budget_exhausted_marks_failed_continues(tmp_path):
-    """Groq BudgetExhausted during repair → that target FAILED, loop continues to next."""
+def test_repair_budget_exhausted_stops_loop(tmp_path):
+    """Groq BudgetExhausted during repair → stop the run cleanly.
+
+    A repair-stage rate limit means the next target would almost certainly hit
+    it too, so reflecta stops (stop_reason='budget') instead of failing target
+    by target. The current target is FAILED; later targets stay PENDING.
+    """
     from reflecta.llm.provider import BudgetExhausted
     from reflecta.loop import run_loop
 
@@ -43,17 +48,9 @@ def test_repair_budget_exhausted_marks_failed_continues(tmp_path):
     gen_b = _good_test(targets[1], tmp_path)
 
     gen_iter = iter([gen_a, gen_b])
-    run_iter = iter(
-        [
-            RunResult(passed=False, traceback="AssertionError", duration=0.1),
-            RunResult(passed=True, traceback="", duration=0.1),
-        ]
-    )
 
     def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs):
         raise BudgetExhausted("groq daily cap hit")
-
-    coverage_seq = iter([50.0, 60.0])
 
     with (
         patch("reflecta.loop.extract_targets", return_value=targets),
@@ -62,16 +59,18 @@ def test_repair_budget_exhausted_marks_failed_continues(tmp_path):
         ),
         patch(
             "reflecta.loop.run_test_isolated",
-            side_effect=lambda *a, **kw: next(run_iter),
+            side_effect=lambda *a, **kw: RunResult(
+                passed=False, traceback="AssertionError", duration=0.1
+            ),
         ),
         patch("reflecta.loop.repair_test", side_effect=fake_repair),
         patch(
             "reflecta.loop.measure_coverage_real",
-            side_effect=lambda *a, **k: (next(coverage_seq), True),
+            side_effect=lambda *a, **k: (50.0, True),
         ),
         patch(
             "reflecta.loop.measure_coverage_isolated",
-            side_effect=lambda *a, **k: (next(coverage_seq), True),
+            side_effect=lambda *a, **k: (50.0, True),
         ),
     ):
         report = run_loop(tmp_path, max_iters=10)
@@ -79,12 +78,12 @@ def test_repair_budget_exhausted_marks_failed_continues(tmp_path):
     assert targets[0].status == TargetStatus.FAILED, (
         "repair-exhausted target should be FAILED"
     )
-    assert targets[1].status == TargetStatus.KEPT, (
-        "next target should still be attempted"
+    assert targets[1].status == TargetStatus.PENDING, (
+        "loop should stop before attempting later targets"
     )
-    assert report.tests_kept == 1
-    assert report.stop_reason != "budget", (
-        "loop should not stop due to repair-side exhaustion"
+    assert report.tests_kept == 0
+    assert report.stop_reason == "budget", (
+        "repair-side rate limit should stop the run cleanly"
     )
 
 
