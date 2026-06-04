@@ -167,3 +167,51 @@ def test_groq_none_content_raises_empty_response():
 
     with pytest.raises(EmptyResponse):
         groq.repair("prompt", client=fake_client)
+
+
+# ---------------------------------------------------------------------------
+# HTTP 413 "request too large" must NOT be treated as a retryable 429
+# ---------------------------------------------------------------------------
+
+# The real Groq message: its body mentions "tokens per minute" and a
+# rate-limit-ish code, which the old 429 heuristic misclassified.
+_GROQ_413 = (
+    "Error code: 413 - {'error': {'message': 'Request too large for model "
+    "`llama-3.1-8b-instant` in organization `org_x` service tier `on_demand` "
+    "on tokens per minute (TPM): Limit 6000, Requested 8486, please reduce "
+    "your message size and try again.', 'type': 'tokens', "
+    "'code': 'rate_limit_exceeded'}}"
+)
+
+
+def test_groq_413_raises_request_too_large_not_rate_limit():
+    from reflecta.llm import groq
+    from reflecta.llm.provider import RequestTooLarge
+
+    class _FakeCompletions:
+        def create(self, *, model, messages):
+            raise Exception(_GROQ_413)
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions()))
+
+    with pytest.raises(RequestTooLarge):
+        groq.repair("prompt", client=fake_client)
+
+
+def test_request_too_large_is_not_retried_by_call_with_retry(monkeypatch):
+    from reflecta.llm.provider import RequestTooLarge
+
+    sleeps = []
+    monkeypatch.setattr("reflecta.llm.provider.time.sleep", lambda s: sleeps.append(s))
+
+    calls = {"n": 0}
+
+    def raises_413():
+        calls["n"] += 1
+        raise RequestTooLarge("413 request too large", provider="Groq")
+
+    # Must propagate immediately — no backoff, no BudgetExhausted.
+    with pytest.raises(RequestTooLarge):
+        call_with_retry(raises_413, max_retries=5)
+    assert calls["n"] == 1
+    assert sleeps == []

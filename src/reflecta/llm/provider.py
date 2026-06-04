@@ -52,6 +52,22 @@ class BudgetExhausted(Exception):
     """Raised when retries are exhausted due to repeated rate limiting."""
 
 
+class RequestTooLarge(Exception):
+    """Raised when a provider rejects a request as too large (HTTP 413).
+
+    Distinct from ``RateLimitError`` (429): a 413 means the *single request*
+    exceeds the model's per-minute token budget (TPM), so retrying with backoff
+    is futile — the payload must be shrunk or sent to a higher-TPM model.
+    ``call_with_retry`` deliberately does NOT catch this, so it surfaces
+    immediately to the caller that can re-trim or re-route.
+    """
+
+    def __init__(self, message: str, *, provider: str = "the LLM provider") -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.raw = message
+
+
 class EmptyResponse(Exception):
     """Raised when a provider returns no text (e.g. a safety block or an empty
     completion). Distinguishes "the model gave us nothing" from a code bug so

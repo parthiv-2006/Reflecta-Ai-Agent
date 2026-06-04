@@ -4,6 +4,7 @@ from reflecta.llm import remote
 from reflecta.llm.provider import (
     EmptyResponse,
     RateLimitError,
+    RequestTooLarge,
     call_with_retry,
     strip_fences,
 )
@@ -32,9 +33,24 @@ def repair(prompt: str, *, model: str = MODEL_FAST, client=None) -> str:
             )
             return resp.choices[0].message.content
         except Exception as exc:
-            if "429" in str(exc) or "rate" in str(exc).lower():
+            s = str(exc)
+            low = s.lower()
+            # 413 "request too large" must be checked FIRST: Groq's 413 body
+            # mentions "tokens per minute" and carries a rate_limit-ish code, so
+            # the 429 heuristic below would otherwise misclassify it as a
+            # retryable rate limit and waste the whole backoff budget on a
+            # request that can never fit.
+            if (
+                "413" in s
+                or "request too large" in low
+                or "reduce your message size" in low
+            ):
+                raise RequestTooLarge(
+                    s, provider=f"Groq (test repair, {model})"
+                ) from exc
+            if "429" in s or "rate" in low:
                 raise RateLimitError(
-                    str(exc), provider=f"Groq (test repair, {model})"
+                    s, provider=f"Groq (test repair, {model})"
                 ) from exc
             raise
 
