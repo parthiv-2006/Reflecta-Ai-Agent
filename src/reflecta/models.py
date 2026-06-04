@@ -35,6 +35,11 @@ class CoverageTarget:
     # program, so they are near-impossible to unit-test and waste budget. The
     # loop deprioritizes them and, by default, skips them entirely.
     is_entrypoint: bool = False
+    # Static, no-LLM testability verdict ("testable" | "risky" | "blocked")
+    # plus a human reason. Computed in extract_targets; the loop skips
+    # blocked/risky targets before spending any LLM quota. See testability.py.
+    testability: str = "testable"
+    testability_reason: str = ""
 
 
 @dataclass
