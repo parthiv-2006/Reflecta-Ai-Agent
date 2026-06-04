@@ -237,6 +237,93 @@ def test_repair_runs_test_with_repo_path_cwd(tmp_path):
     assert called_repo_path != test.test_file_path.parent
 
 
+def test_repair_prompt_fits_model_tpm_budget():
+    """A huge source must be trimmed so the repair request stays under the
+    model's per-minute token budget (the HTTP 413 root cause)."""
+    from reflecta.llm.groq import MODEL_FAST, MODEL_HARD
+    from reflecta.llm.limits import estimate_tokens, request_token_budget
+    from reflecta.repair import _budget_repair_prompt
+
+    huge_source = (
+        "import os\n" * 50
+        + "def add(a, b):\n    return a + b\n"
+        + ("x = 1  # filler line\n" * 8000)
+    )
+    test_source = "def test_add():\n    assert add(1, 2) == 3\n"
+    traceback = "AssertionError: assert 0 == 3\n" * 200
+
+    for model in (MODEL_FAST, MODEL_HARD):
+        prompt = _budget_repair_prompt(
+            huge_source, test_source, traceback, model=model, qualified_name="add"
+        )
+        assert estimate_tokens(prompt) <= request_token_budget(model)
+        # The thing we are trying to fix must always survive trimming.
+        assert "def test_add" in prompt
+
+
+def test_repair_escalates_to_70b_on_413(tmp_path):
+    """If the 8B model returns 413, repair re-tries on the higher-TPM 70B."""
+    from reflecta.llm.groq import MODEL_FAST, MODEL_HARD
+    from reflecta.llm.provider import RequestTooLarge
+
+    target = _make_target(tmp_path)
+    test = _make_test(tmp_path, target)
+    failing = _failing_result()
+    good_source = "from calc import add\ndef test_add():\n    assert add(1, 2) == 3\n"
+
+    models_seen = []
+
+    def fake_repair(prompt, *, model):
+        models_seen.append(model)
+        if model == MODEL_FAST:
+            raise RequestTooLarge("413 request too large", provider="Groq")
+        return good_source
+
+    mock_groq = MagicMock()
+    mock_groq.repair.side_effect = fake_repair
+
+    with patch("reflecta.repair.run_test_isolated", return_value=_passing_result()):
+        repaired, attempts = repair_test(
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
+        )
+
+    assert repaired is not None
+    assert models_seen == [MODEL_FAST, MODEL_HARD]  # escalated
+    assert target.status == TargetStatus.KEPT
+
+
+def test_repair_413_on_both_models_fails_cleanly(tmp_path):
+    """If even the 70B returns 413, the attempt is recorded as a clean FAIL
+    (no infinite retry, no misleading 'rate limited')."""
+    from reflecta.llm.provider import RequestTooLarge
+
+    target = _make_target(tmp_path)
+    test = _make_test(tmp_path, target)
+    failing = _failing_result()
+
+    mock_groq = MagicMock()
+    mock_groq.repair.side_effect = RequestTooLarge("413", provider="Groq")
+
+    with patch("reflecta.repair.run_test_isolated", return_value=_passing_result()):
+        repaired, attempts = repair_test(
+            test,
+            failing,
+            "def add(a, b): return a + b",
+            repo_path=tmp_path,
+            max_repairs=2,
+            groq_client=mock_groq,
+        )
+
+    assert repaired is None
+    assert target.status == TargetStatus.FAILED
+    assert attempts and "request too large" in attempts[0].traceback
+
+
 def test_extract_relevant_source_trims_large_files():
     from reflecta.repair import extract_relevant_source
 
