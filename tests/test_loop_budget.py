@@ -153,7 +153,7 @@ def test_budget_exhausted_stops_loop(tmp_path):
 
     call_count = {"n": 0}
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         call_count["n"] += 1
         return _good_test(target, tmp_path)
 
@@ -191,7 +191,7 @@ def test_generation_exception_marks_failed_and_continues(tmp_path):
     targets = [_target("func_a"), _target("func_b")]
     gen_b = _good_test(targets[1], tmp_path)
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         if target.qualified_name == "func_a":
             raise ImportError("un-importable target module")
         return gen_b
@@ -232,7 +232,7 @@ def test_provider_budget_exhausted_stops_cleanly(tmp_path):
 
     targets = [_target("func_a"), _target("func_b")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         raise BudgetExhausted("rate-limited after 5 retries")
 
     with (
@@ -295,7 +295,7 @@ def test_target_coverage_reached_stops_loop(tmp_path):
 
     targets = [_target("func_a"), _target("func_b")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         return _good_test(target, tmp_path)
 
     def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
@@ -331,7 +331,7 @@ def test_coverage_stall_stops_loop(tmp_path):
 
     targets = [_target("func_a"), _target("func_b"), _target("func_c")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         return _good_test(target, tmp_path)
 
     def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
@@ -365,7 +365,7 @@ def test_suite_breaking_test_discarded_even_if_coverage_rises(tmp_path):
 
     targets = [_target("func_a")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         return _good_test(target, tmp_path)
 
     def fake_run(test_file, repo_path, timeout_s=30, **kwargs):
@@ -394,7 +394,7 @@ def test_max_iters_stops_at_two(tmp_path):
 
     targets = [_target("func_a"), _target("func_b"), _target("func_c")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         return _good_test(target, tmp_path)
 
     def fake_run(test_file, repo_path, timeout_s=30, **kwargs):

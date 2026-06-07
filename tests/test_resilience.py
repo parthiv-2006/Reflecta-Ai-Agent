@@ -117,7 +117,7 @@ def test_budget_tracker_stops_before_cap(tmp_path):
     targets = [_target(f"func_{i}") for i in range(5)]
     generate_calls = {"n": 0}
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         generate_calls["n"] += 1
         return _good_test(target, tmp_path)
 

@@ -22,11 +22,11 @@ def _make_target(file_path: Path, missing_lines: list[int]) -> CoverageTarget:
 def test_prompt_contains_missed_lines(monkeypatch, tmp_path):
     captured = {}
 
-    def mock_generate(prompt, *, client=None):
+    def mock_generate(prompt, *, client=None, **kwargs):
         captured["prompt"] = prompt
         return SIMPLE_TEST_SOURCE
 
-    monkeypatch.setattr("reflecta.generate.gemini.generate", mock_generate)
+    monkeypatch.setattr("reflecta.llm.router.generate", mock_generate)
 
     target = _make_target(tmp_path / "calc.py", [5, 6, 7])
     generate_test(target, "def add(a, b): return a + b", "", repo_path=tmp_path)
@@ -38,7 +38,7 @@ def test_prompt_contains_missed_lines(monkeypatch, tmp_path):
 
 def test_file_written_to_correct_path(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "reflecta.generate.gemini.generate",
+        "reflecta.llm.router.generate",
         lambda *a, **kw: SIMPLE_TEST_SOURCE,
     )
 
@@ -54,7 +54,7 @@ def test_file_written_to_correct_path(monkeypatch, tmp_path):
 
 def test_counter_increments(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "reflecta.generate.gemini.generate",
+        "reflecta.llm.router.generate",
         lambda *a, **kw: SIMPLE_TEST_SOURCE,
     )
 
@@ -116,7 +116,7 @@ def test_collect_existing_tests_no_tests_dir(tmp_path):
 def test_generated_test_has_assertion_count(monkeypatch, tmp_path):
     """HARDENING-0-9 §4.5: assertion_count reflects the real number of asserts."""
     monkeypatch.setattr(
-        "reflecta.generate.gemini.generate",
+        "reflecta.llm.router.generate",
         lambda *a, **kw: (
             "from calc import add\n\ndef test_a():\n    assert add(1, 1) == 2\n    assert add(2, 2) == 4\n"
         ),
@@ -143,11 +143,11 @@ def test_regenerates_once_when_first_draft_is_broken(monkeypatch, tmp_path):
     drafts = iter([BROKEN_FRAGMENT, FIXED_TEST])
     prompts = []
 
-    def mock_generate(prompt, *, client=None):
+    def mock_generate(prompt, *, client=None, **kwargs):
         prompts.append(prompt)
         return next(drafts)
 
-    monkeypatch.setattr("reflecta.generate.gemini.generate", mock_generate)
+    monkeypatch.setattr("reflecta.llm.router.generate", mock_generate)
 
     target = _make_target(tmp_path / "calc.py", [2])
     result = generate_test(
@@ -166,7 +166,7 @@ def test_structural_error_set_when_all_drafts_broken(monkeypatch, tmp_path):
     """If every draft is broken, the target carries a structural_error so the
     loop can skip it instead of paying the repair budget."""
     monkeypatch.setattr(
-        "reflecta.generate.gemini.generate", lambda *a, **kw: BROKEN_FRAGMENT
+        "reflecta.llm.router.generate", lambda *a, **kw: BROKEN_FRAGMENT
     )
 
     target = _make_target(tmp_path / "calc.py", [2])
@@ -190,7 +190,7 @@ def test_generated_file_written_as_utf8(monkeypatch, tmp_path):
         "    assert add(1, 2) == 3\n"
     )
     monkeypatch.setattr(
-        "reflecta.generate.gemini.generate", lambda *a, **kw: non_ascii
+        "reflecta.llm.router.generate", lambda *a, **kw: non_ascii
     )
     target = _make_target(tmp_path / "calc.py", [2])
     result = generate_test(
@@ -225,11 +225,11 @@ def test_method_target_imports_class_not_method(monkeypatch, tmp_path):
     class, never `from Class import method`."""
     captured = {}
 
-    def mock_generate(prompt, *, client=None):
+    def mock_generate(prompt, *, client=None, **kwargs):
         captured["prompt"] = prompt
         return SIMPLE_TEST_SOURCE
 
-    monkeypatch.setattr("reflecta.generate.gemini.generate", mock_generate)
+    monkeypatch.setattr("reflecta.llm.router.generate", mock_generate)
 
     target = CoverageTarget(
         file_path=tmp_path / "calc.py",

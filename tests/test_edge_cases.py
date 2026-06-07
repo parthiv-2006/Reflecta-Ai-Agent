@@ -128,7 +128,7 @@ def test_broken_target_marked_failed_loop_continues(tmp_path):
     gen_b = _test_with_assertions(targets[1], tmp_path)
     coverage_seq = iter([50.0, 60.0])
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None):
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
         if target.qualified_name == "broken_func":
             raise ImportError("cannot import module: SyntaxError in target file")
         return gen_b
