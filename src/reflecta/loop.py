@@ -638,6 +638,8 @@ def run_loop(
                         existing_tests,
                         repo_path=repo_path,
                         gemini_client=gemini_client,
+                        claude_client=claude_client,
+                        cache_dir=repo_path / COVERAGE_DIR / "gen_cache",
                     )
                 budget.charge(test.generation_calls)
 

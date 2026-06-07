@@ -2,7 +2,7 @@ import ast
 import re
 from pathlib import Path
 
-from reflecta.llm import gemini
+from reflecta.llm import router
 from reflecta.models import CoverageTarget, GeneratedTest
 from reflecta.prompts import build_generation_prompt
 from reflecta.validation import validate_test_source
@@ -74,6 +74,8 @@ def generate_test(
     *,
     repo_path: Path,
     gemini_client=None,
+    claude_client=None,
+    cache_dir: Path | None = None,
     max_attempts: int = 2,
 ) -> GeneratedTest:
     """Draft a test file for ``target``, regenerating once if the first draft is
@@ -100,7 +102,12 @@ def generate_test(
             existing_tests=existing_tests,
             retry_reason=structural_error if attempt > 1 else None,
         )
-        source_code = gemini.generate(prompt, client=gemini_client)
+        source_code = router.generate(
+            prompt,
+            client=gemini_client,
+            claude_client=claude_client,
+            cache_dir=cache_dir,
+        )
         calls += 1
         valid, reason = validate_test_source(source_code)
         if valid:
