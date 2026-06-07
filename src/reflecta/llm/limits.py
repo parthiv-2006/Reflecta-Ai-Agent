@@ -37,6 +37,12 @@ GEMINI_FREE_LIMITS: dict[str, ModelLimits] = {
     "gemini-2.5-flash": ModelLimits(tpm=250_000, rpm=10, rpd=250, tpd=0),
 }
 
+# Claude limits for overflow generation (Pro subscription / API key).
+# rpd=0 means no published daily hard cap at the Pro tier.
+CLAUDE_LIMITS: dict[str, ModelLimits] = {
+    "claude-haiku-4-5-20251001": ModelLimits(tpm=100_000, rpm=50, rpd=0, tpd=0),
+}
+
 # Conservative fallback TPM for an unknown model — assume the smallest tier.
 _DEFAULT_TPM = 6_000
 
