@@ -222,6 +222,12 @@ each user bringing their own. Architecture + rationale:
 - [ ] Production hardening (per `proxy/README.md`): persistent metering
       (Redis/DB), token DB with revocation, billing, rate limits, ToS/privacy.
 
+## Session status (2026-06-07)
+
+- **Generation cache + Claude Haiku overflow built and merged** (`feat/generation-cache-claude-overflow` → `main`). Gemini's 250 RPD daily cap no longer stops runs mid-repo: on BudgetExhausted, the router falls back to Claude Haiku (capped at 20 calls/run via `REFLECTA_CLAUDE_OVERFLOW`). Re-runs of the same repo hit the disk cache (`{repo}/.reflecta/gen_cache/`) and spend zero Gemini quota.
+- New files: `llm/cache.py`, `llm/claude_generate.py`, `llm/router.py`. Requires `ANTHROPIC_API_KEY` in `.env` for overflow to activate (same key as `--escalate`; Pro subscription OAuth token or console API key both work).
+- 237 tests passing, ruff clean.
+
 ## Session status (2026-06-02)
 
 - Remote key-broker mode is **built and merged** but **not yet deployed** — the

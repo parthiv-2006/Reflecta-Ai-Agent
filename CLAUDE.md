@@ -21,9 +21,10 @@ reflecta finds untested Python code, writes targeted pytest tests for it using f
 ## Free-stack routing (do not violate)
 - Orchestration is deterministic Python. Do NOT turn the main loop into an LLM agent.
 - Coverage parsing / target ranking -> Groq 8B.
-- Test generation from full source -> Gemini Flash.
+- Test generation from full source -> **`llm/router.py`** (cache → Gemini Flash → Claude Haiku overflow).
 - Test repair from traceback -> Groq (8B, then 70B).
-- Claude is the escalation path only (v2), never the main loop. Keep Claude calls rare so the project stays within free/subscription usage.
+- Claude Haiku is the **generation overflow** path — activated only when Gemini's 250 RPD is exhausted mid-run. Capped at 20 calls/run (env: `REFLECTA_CLAUDE_OVERFLOW`). Uses the same OAuth/API-key auth as escalation (`ANTHROPIC_API_KEY`). No new keys needed.
+- Claude Sonnet is the **repair escalation** path only (`--escalate` flag). Keep both Claude paths rare so the project stays within free/subscription usage.
 
 ## Data model (see SPEC.md for full)
 CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> GeneratedTest(target, test_file_path, source_code, model_used, assertion_count) -> RepairAttempt(...) -> RunReport(coverage_before, coverage_after, tests_kept, tests_discarded, repair_attempts_used, stop_reason). In-memory dataclasses, serialized to `reflecta-report.json`. All types live in `src/reflecta/models.py` — never duplicate them elsewhere.
@@ -45,6 +46,7 @@ CoverageTarget(file_path, qualified_name, missing_lines, priority, status) -> Ge
 - **Dynamic PYTHONPATH Injection**: To handle scripts in non-package layout folders (e.g. `scripts/`), the subprocess runner dynamically discovers source directories and injects them into the child's `PYTHONPATH`.
 - **Large Source File Trimming**: Large target source files (exceeding 15,000 characters) are trimmed using the AST to include only the target function/method and the top 100 lines (imports/setup) before calling Groq to avoid `HTTP 413 Payload Too Large` developer tier limits.
 - **Heavy Directory Exclusions**: Sandbox copying ignores `node_modules`, `build`, `dist`, and `.omc` to optimize disk I/O.
+- **Generation Routing via `llm/router.py`**: `generate.py` calls `router.generate()`, NOT `gemini.generate()` directly. The router sequence is: (1) disk cache hit (`llm/cache.py`, sha256 key, 7-day TTL, stored in `{repo}/.reflecta/gen_cache/`) → return immediately; (2) Gemini Flash; (3) on `BudgetExhausted` from Gemini → Claude Haiku overflow (`llm/claude_generate.py`), capped at `REFLECTA_CLAUDE_OVERFLOW` calls (default 20) per process. Overflow counter and cap check live in `router.py` (not in `claude_generate.generate`) so test doubles injected via monkeypatch still participate in budget accounting. When writing tests for `generate.py`, monkeypatch `"reflecta.llm.router.generate"`, NOT `"reflecta.generate.gemini.generate"` — gemini is no longer imported by generate.py.
 - **Mocking Convention**: Test generation prompts mandate Python's built-in `unittest.mock` module over the third-party `pytest-mock` `mocker` fixture, as the latter might not be installed in the target codebase.
 - **Conversational Response Extraction**: `strip_fences` concatenates **every** ```` ```python ```` block in the LLM response (not just the first). Gemini interleaves prose between multiple fences; taking only the first block truncated the file and dropped imports, leaving dangling `@mock.patch` → `NameError` at collection. Empty fenced blocks are ignored.
 - **Generation Validation + Regeneration**: A draft can parse cleanly yet be unrunnable (empty module, no `test_*` function, or a decorator using an unimported name). `validation.validate_test_source` catches these; `generate_test` regenerates once with the concrete reason; an irrecoverable draft is marked `TargetStatus.SKIPPED` and never enters the (futile) repair path. `ast.parse` alone is insufficient — empty files and dangling-decorator fragments are syntactically valid.
@@ -88,7 +90,10 @@ reflecta/
 │           ├── provider.py      # retry wrapper + BudgetExhausted/RequestTooLarge (all calls go here)
 │           ├── limits.py        # free-tier RPM/RPD/TPM/TPD per model + token budgeting (single source of truth)
 │           ├── gemini.py        # Gemini Flash client
-│           └── groq.py          # Groq client
+│           ├── groq.py          # Groq client
+│           ├── claude_generate.py  # Claude Haiku text generation (generation overflow path)
+│           ├── cache.py         # sha256-keyed disk cache for generation results (7-day TTL)
+│           └── router.py        # generate() orchestrator: cache → Gemini → Claude Haiku
 ├── tests/
 │   ├── __init__.py
 │   ├── test_smoke.py
