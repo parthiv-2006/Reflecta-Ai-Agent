@@ -643,6 +643,12 @@ def run_loop(
                     )
                 budget.charge(test.generation_calls)
 
+                # Track provider call counts on the report.
+                if "claude" in test.model_used.lower():
+                    report.llm_calls_claude += test.generation_calls
+                else:
+                    report.llm_calls_gemini += test.generation_calls
+
                 # Structurally unrunnable draft (empty, no test, missing import).
                 # Repair cannot rescue these — it would feed garbage to Groq and
                 # burn budget. Skip straight to SKIPPED and move on.
@@ -780,6 +786,13 @@ def run_loop(
 
                     report.repair_attempts_used += len(attempts)
                     budget.charge(len(attempts))
+
+                    # Track repair provider calls on the report.
+                    for att in attempts:
+                        if "claude" in att.model_used.lower():
+                            report.llm_calls_claude += 1
+                        else:
+                            report.llm_calls_groq += 1
 
                     if repaired is None:
                         if escalate:

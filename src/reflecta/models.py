@@ -96,3 +96,8 @@ class RunReport:
     escalations_succeeded: int = 0
     budget: str = ""
     stop_reason: str = ""
+    # LLM call counts per provider — incremented by loop.py at each call site
+    # so the JSON report carries the counts without extra instrumentation.
+    llm_calls_gemini: int = 0
+    llm_calls_groq: int = 0
+    llm_calls_claude: int = 0
