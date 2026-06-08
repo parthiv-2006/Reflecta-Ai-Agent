@@ -11,6 +11,15 @@ from reflecta.ui import ReflectaUI
 
 app = typer.Typer(help="reflecta — auto-generate coverage-raising pytest tests.")
 
+# Register the eval command group when the eval/ package is present.
+try:
+    from eval.cli import eval_app  # noqa: E402
+
+    app.add_typer(eval_app, name="eval")
+except ImportError:
+    pass  # eval/ not installed — eval commands simply absent
+
+
 
 @app.command()
 def run(
