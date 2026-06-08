@@ -24,7 +24,7 @@ except ImportError:
 @app.command()
 def run(
     path: Path = typer.Option(..., help="Path to the repository to analyse."),
-    max_iters: int = typer.Option(10, help="Maximum targets to attempt per run."),
+    max_iters: int = typer.Option(20, help="Maximum targets to attempt per run."),
     max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
     max_llm_calls: int = typer.Option(
         50,
@@ -38,7 +38,7 @@ def run(
         None, help="Stop once total coverage reaches this percent."
     ),
     stall_k: int = typer.Option(
-        3, help="Stop after this many consecutive targets that do not raise coverage."
+        7, help="Stop after this many consecutive targets that do not raise coverage."
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Log per-target decisions to stderr."

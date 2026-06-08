@@ -388,6 +388,25 @@ def test_suite_breaking_test_discarded_even_if_coverage_rises(tmp_path):
     assert targets[0].status == TargetStatus.DISCARDED
 
 
+def test_run_loop_default_stall_k_is_7(tmp_path):
+    """stall_k default must be 7 so easy-win repos don't stop prematurely."""
+    import inspect
+
+    from reflecta.loop import run_loop
+
+    sig = inspect.signature(run_loop)
+    assert sig.parameters["stall_k"].default == 7
+
+
+def test_run_loop_default_max_iters_is_20(tmp_path):
+    import inspect
+
+    from reflecta.loop import run_loop
+
+    sig = inspect.signature(run_loop)
+    assert sig.parameters["max_iters"].default == 20
+
+
 def test_max_iters_stops_at_two(tmp_path):
     """max_iters=2 with 3 targets → loop stops after exactly 2 iterations."""
     from reflecta.loop import run_loop
