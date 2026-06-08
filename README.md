@@ -2,9 +2,22 @@
 
 **Reflecta finds coverage gaps in Python repositories, generates targeted pytest tests using free LLM tiers, repairs failures automatically, and keeps only tests that strictly raise coverage.**
 
+[![CI](https://github.com/parthiv-2006/Reflecta-Ai-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/parthiv-2006/Reflecta-Ai-Agent/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests: 291 passing](https://img.shields.io/badge/tests-291%20passing-brightgreen.svg)](#testing)
+
+---
+
+## Demo
+
+<!-- Record with: python -m reflecta run --path examples/sample_project --max-iters 3 -v -->
+<!-- Then convert to GIF with: https://asciinema.org or `terminalizer` -->
+<!-- Drop the GIF here: -->
+
+![Reflecta demo](docs/demo.gif)
+
+> Point Reflecta at `examples/sample_project` and watch it measure coverage gaps, generate targeted tests, repair failures, and close from **64% → 92.5%** in one run.
 
 ---
 
