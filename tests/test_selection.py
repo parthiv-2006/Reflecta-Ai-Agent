@@ -119,3 +119,57 @@ def test_entrypoint_selected_when_only_candidate() -> None:
     result = select_next([main])
     assert result is not None
     assert result.qualified_name == "main"
+
+
+# ---------------------------------------------------------------------------
+# Case 7 — size buckets: small targets (≤15 lines) before large orchestrators
+# ---------------------------------------------------------------------------
+
+
+def test_small_target_beats_large_target() -> None:
+    """A small function (≤15 lines) should be selected before a large one
+    even when the large function has a higher raw priority score."""
+    small = CoverageTarget(
+        file_path=Path("a.py"),
+        qualified_name="small_func",
+        missing_lines=list(range(5)),
+        priority=5.0,
+        status=TargetStatus.PENDING,
+        is_entrypoint=False,
+        testability="testable",
+    )
+    large = CoverageTarget(
+        file_path=Path("a.py"),
+        qualified_name="large_func",
+        missing_lines=list(range(60)),
+        priority=60.0,
+        status=TargetStatus.PENDING,
+        is_entrypoint=False,
+        testability="testable",
+    )
+    assert select_next([large, small]) is small
+    assert select_next([small, large]) is small
+
+
+def test_within_same_bucket_larger_first() -> None:
+    """Within the same size bucket, the function with more missing lines
+    (higher priority) should be selected first."""
+    medium_a = CoverageTarget(
+        file_path=Path("a.py"),
+        qualified_name="func_a",
+        missing_lines=list(range(30)),
+        priority=30.0,
+        status=TargetStatus.PENDING,
+        is_entrypoint=False,
+        testability="testable",
+    )
+    medium_b = CoverageTarget(
+        file_path=Path("a.py"),
+        qualified_name="func_b",
+        missing_lines=list(range(20)),
+        priority=20.0,
+        status=TargetStatus.PENDING,
+        is_entrypoint=False,
+        testability="testable",
+    )
+    assert select_next([medium_b, medium_a]) is medium_a
