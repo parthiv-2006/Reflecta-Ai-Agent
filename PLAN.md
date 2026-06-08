@@ -147,6 +147,7 @@ and the gate stress test (14) remain open below.
   - [x] **19d. Repair-stage rate limit stops the run cleanly** (was optional follow-up) — both generation- and repair-stage `BudgetExhausted` now stop with `stop_reason=budget`.
   - [x] **19e. Static testability triage (2026-06-04):** new `testability.py` classifies every target (AST only, no LLM) as testable/risky/blocked. `run_loop` skips blocked (always) + risky (default) before any provider call; stops with `no_testable_targets` if nothing is attemptable. New `reflecta triage --path` and `run --dry-run` give a zero-quota preview; `--attempt-risky` overrides. Verified on leaseguard: 74 testable attempted, 29 risky + 8 entrypoints skipped, no quota spent. 234 tests pass.
   - [ ] **19f.** Capture before/after coverage numbers for the README — now that triage targets the 74 unit-testable functions, run with adequate `--max-iters` and grab the delta. Watch the Gemini daily RPD=250 cap.
+  - [x] **19g. Priority + triage robustness (2026-06-08):** easy-wins-first selection (small functions ≤15 lines attempted before large orchestrators); stall_k default 3→7 and max_iters default 10→20; transitive hostile-call detection in testability triage (one-level call-graph analysis catches functions that delegate I/O to local helpers). Fixes zero-kept-test run on Leaseguard.
 - [x] **20. Tag `v0.1.0`.**
 
 ---
@@ -222,6 +223,16 @@ each user bringing their own. Architecture + rationale:
 - [ ] Production hardening (per `proxy/README.md`): persistent metering
       (Redis/DB), token DB with revocation, billing, rate limits, ToS/privacy.
 
+## Session status (2026-06-08)
+
+- **Eval harness built and merged** (`feat/eval-harness` → `main`, built by Gemini during usage-limit reset, reviewed + merged).
+- New package `eval/` with: `runner.py` (subprocess driver, temp-copy isolation), `compare.py` (tolerance-based metric comparison), `metrics.py` (EvalMetrics/MetricResult/EvalReport dataclasses), `report.py` (ASCII table formatter), `cli.py` (`reflecta eval run/update-baseline/cache` commands).
+- Three fixtures under `eval/fixtures/`: `calc` (pure-function coverage), `text_utils` (string processing), `risky_io` (validates triage blocks I/O targets before spending quota).
+- LLM response recordings committed under `eval/recordings/` — CI runs are quota-free by default.
+- `--cache-dir` flag added to `reflecta run` CLI and threaded through `run_loop`; `llm_calls_gemini/groq/claude` counters added to `RunReport` and serialised to `reflecta-report.json`.
+- **Test suite: 291 passing** (245 core + 46 eval), ruff clean.
+- Remaining v2 backlog items unchanged.
+
 ## Session status (2026-06-07)
 
 - **Generation cache + Claude Haiku overflow built and merged** (`feat/generation-cache-claude-overflow` → `main`). Gemini's 250 RPD daily cap no longer stops runs mid-repo: on BudgetExhausted, the router falls back to Claude Haiku (capped at 20 calls/run via `REFLECTA_CLAUDE_OVERFLOW`). Re-runs of the same repo hit the disk cache (`{repo}/.reflecta/gen_cache/`) and spend zero Gemini quota.
@@ -244,7 +255,7 @@ each user bringing their own. Architecture + rationale:
 
 - [ ] Mutation testing as a stronger quality signal than line coverage.
 - [ ] Branch-coverage targeting, not just lines.
-- [ ] An eval harness: fixed targets with known gaps, measure coverage gained / accepted / rejected / repairs used on every prompt or routing change.
+- [x] An eval harness: fixed targets with known gaps, measure coverage gained / accepted / rejected / repairs used on every prompt or routing change. Built in `eval/` — see Session status 2026-06-08.
 - [ ] Parallel targets via git worktrees.
 - [ ] CI integration: open a PR with accepted tests.
 - [ ] Config file (`reflecta.toml`).
