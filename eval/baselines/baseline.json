@@ -1,0 +1,25 @@
+{
+  "calc": {
+    "coverage_delta":          { "min": 0.18, "note": "3 uncovered functions" },
+    "tests_accepted":          { "min": 2,    "note": "at least 2 of 3 pass both gates" },
+    "tests_discarded":         { "max": 2,    "note": "allow up to 1 failed target" },
+    "repair_attempts_used":    { "max": 4,    "note": "2 repairs x 2 targets worst case" },
+    "llm_calls_gemini":        { "min": 1, "max": 6, "note": "1 per target + regen" },
+    "targets_skipped_blocked": { "exact": 0 },
+    "targets_skipped_risky":   { "exact": 0 }
+  },
+  "text_utils": {
+    "coverage_delta":          { "min": 0.15 },
+    "tests_accepted":          { "min": 2 },
+    "tests_discarded":         { "max": 2 },
+    "repair_attempts_used":    { "max": 4 },
+    "targets_skipped_blocked": { "exact": 0 },
+    "targets_skipped_risky":   { "exact": 0 }
+  },
+  "risky_io": {
+    "tests_accepted":          { "exact": 0, "note": "triage should block all targets" },
+    "llm_calls_gemini":        { "exact": 0, "note": "no LLM calls before triage blocks" },
+    "llm_calls_groq":          { "exact": 0 },
+    "targets_skipped_risky":   { "min": 1,   "note": "at least the I/O functions" }
+  }
+}
