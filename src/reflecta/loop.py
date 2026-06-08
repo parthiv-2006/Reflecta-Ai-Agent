@@ -437,11 +437,11 @@ def triage_repo(
 def run_loop(
     repo_path: Path,
     *,
-    max_iters: int = 10,
+    max_iters: int = 20,
     max_repairs: int = 2,
     max_llm_calls: int = 50,
     target_coverage: float | None = None,
-    stall_k: int = 3,
+    stall_k: int = 7,
     escalate: bool = False,
     max_claude_iters: int = 3,
     gemini_client=None,
