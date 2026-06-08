@@ -10,6 +10,7 @@ on failure.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -97,11 +98,20 @@ def run_fixture(
             cmd.extend(extra_flags)
 
         start = time.monotonic()
+        # Build env: inherit current process env (which has API keys loaded
+        # by load_dotenv() in the parent) and ensure PYTHONPATH includes
+        # the repo root so eval/ imports work inside the subprocess.
+        env = os.environ.copy()
+        existing_pp = env.get("PYTHONPATH", "")
+        repo_str = str(_REPO_ROOT)
+        env["PYTHONPATH"] = f"{repo_str}{os.pathsep}{existing_pp}" if existing_pp else repo_str
+
         proc = subprocess.run(
             cmd,
             cwd=str(tmp_fixture),
             capture_output=not verbose,
             text=True,
+            env=env,
         )
         elapsed = time.monotonic() - start
 

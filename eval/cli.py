@@ -25,9 +25,20 @@ eval_app = typer.Typer(help="Eval harness — benchmark reflecta against fixture
 
 # Path to the eval/ directory (this file lives inside it).
 _EVAL_DIR = Path(__file__).parent
+_REPO_ROOT = _EVAL_DIR.parent
 _BASELINES_PATH = _EVAL_DIR / "baselines" / "baseline.json"
 _RECORDINGS_DIR = _EVAL_DIR / "recordings"
 _FIXTURES_DIR = _EVAL_DIR / "fixtures"
+
+# Load .env from the repo root so API keys are in os.environ before any
+# subprocess is spawned.  The subprocess inherits the parent's env, so this
+# is the correct place to ensure GEMINI_API_KEY / GROQ_API_KEY are set.
+try:
+    from reflecta.config import load_dotenv as _load_dotenv
+
+    _load_dotenv(_REPO_ROOT)
+except ImportError:
+    pass  # reflecta not on path yet — will fail at command time with a clear message
 
 
 def _load_baseline() -> dict:

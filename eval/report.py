@@ -37,43 +37,23 @@ def format_eval_report(report: EvalReport) -> str:
     col_status = 8
 
     sep = (
-        "┌"
-        + "─" * (col_metric + 2)
-        + "┬"
-        + "─" * (col_actual + 2)
-        + "┬"
-        + "─" * (col_base + 2)
-        + "┬"
-        + "─" * (col_status + 2)
-        + "┐"
+        "+"
+        + "-" * (col_metric + 2)
+        + "+"
+        + "-" * (col_actual + 2)
+        + "+"
+        + "-" * (col_base + 2)
+        + "+"
+        + "-" * (col_status + 2)
+        + "+"
     )
-    mid = (
-        "├"
-        + "─" * (col_metric + 2)
-        + "┼"
-        + "─" * (col_actual + 2)
-        + "┼"
-        + "─" * (col_base + 2)
-        + "┼"
-        + "─" * (col_status + 2)
-        + "┤"
-    )
-    bot = (
-        "└"
-        + "─" * (col_metric + 2)
-        + "┴"
-        + "─" * (col_actual + 2)
-        + "┴"
-        + "─" * (col_base + 2)
-        + "┴"
-        + "─" * (col_status + 2)
-        + "┘"
-    )
+    mid = sep
+    bot = sep
 
     lines.append(sep)
     header = (
-        f"│ {'Metric':<{col_metric}} │ {'Actual':>{col_actual}} │"
-        f" {'Baseline':>{col_base}} │ {'Status':^{col_status}} │"
+        f"| {'Metric':<{col_metric}} | {'Actual':>{col_actual}} |"
+        f" {'Baseline':>{col_base}} | {'Status':^{col_status}} |"
     )
     lines.append(header)
     lines.append(mid)
@@ -89,8 +69,8 @@ def format_eval_report(report: EvalReport) -> str:
         name_str = r.name[:col_metric]
 
         row = (
-            f"│ {name_str:<{col_metric}} │ {actual_str:>{col_actual}} │"
-            f" {base_str:>{col_base}} │ {status_str:^{col_status}} │"
+            f"| {name_str:<{col_metric}} | {actual_str:>{col_actual}} |"
+            f" {base_str:>{col_base}} | {status_str:^{col_status}} |"
         )
         lines.append(row)
 
