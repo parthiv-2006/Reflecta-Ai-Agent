@@ -185,3 +185,30 @@ def test_eval_update_baseline_help():
     result = runner.invoke(eval_app, ["update-baseline", "--help"])
     assert result.exit_code == 0
     assert "--fixture" in result.output
+
+
+def test_eval_run_output_ascii_safe(tmp_path):
+    """Report formatter output must not contain Unicode box-drawing characters.
+    This prevents UnicodeEncodeError on Windows cp1252 consoles."""
+    from eval.report import format_eval_report
+    from eval.metrics import EvalReport, EvalMetrics, MetricResult
+
+    m = EvalMetrics(
+        fixture_name="calc",
+        coverage_before=50.0, coverage_after=75.0, coverage_delta=25.0,
+        targets_attempted=1, tests_accepted=1, tests_discarded=0,
+        repair_attempts_used=0, targets_skipped_blocked=0, targets_skipped_risky=0,
+        targets_skipped_entrypoint=0, llm_calls_gemini=1, llm_calls_groq=0,
+        llm_calls_claude=0, run_time_seconds=1.0, stop_reason="exhausted",
+    )
+    r = MetricResult("tests_accepted", 1.0, 1.0, 0.0, True, "tests_accepted=1 >= min 1 ✓")
+    report = EvalReport("calc", m, [r], overall_passed=True)
+    text = format_eval_report(report)
+    # Must be encodable in cp1252 (Windows default console encoding)
+    text.encode("cp1252")
+    # Table borders must use ASCII + not Unicode box chars
+    assert "+" in text
+    assert "-" in text
+    assert "|" in text
+    assert "┌" not in text
+    assert "─" not in text
