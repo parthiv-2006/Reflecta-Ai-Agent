@@ -86,6 +86,16 @@ def run(
             "preflight) WITHOUT calling any LLM. No tests are generated."
         ),
     ),
+    cache_dir: Path = typer.Option(
+        None,
+        "--cache-dir",
+        help=(
+            "Override the LLM generation cache directory. Defaults to "
+            "{repo}/.reflecta/gen_cache/. Pass a committed directory "
+            "(e.g. eval/recordings/<fixture>/) to replay cached responses "
+            "without spending quota."
+        ),
+    ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
@@ -132,6 +142,7 @@ def run(
         python_exe=python,
         skip_entrypoints=skip_entrypoints,
         attempt_risky=attempt_risky,
+        cache_dir=cache_dir,
         ui=ui,
     )
     report_path = path / "reflecta-report.json"

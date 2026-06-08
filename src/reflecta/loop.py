@@ -450,6 +450,7 @@ def run_loop(
     python_exe: str | None = None,
     skip_entrypoints: bool = True,
     attempt_risky: bool = False,
+    cache_dir: Path | None = None,
     ui: "ReflectaUI | None" = None,
 ) -> RunReport:
     """Main orchestration loop.
@@ -639,7 +640,7 @@ def run_loop(
                         repo_path=repo_path,
                         gemini_client=gemini_client,
                         claude_client=claude_client,
-                        cache_dir=repo_path / COVERAGE_DIR / "gen_cache",
+                        cache_dir=cache_dir or (repo_path / COVERAGE_DIR / "gen_cache"),
                     )
                 budget.charge(test.generation_calls)
 
