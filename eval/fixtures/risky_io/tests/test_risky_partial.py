@@ -23,7 +23,7 @@ def test_module_importable():
         "risky_io",
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "risky_io.py"),
     )
-    mod = importlib.util.module_from_spec(spec)
+    importlib.util.module_from_spec(spec)
     # We deliberately do NOT call spec.loader.exec_module(mod) to avoid
     # triggering any top-level side effects. Just assert the file exists.
     assert spec is not None

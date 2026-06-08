@@ -7,7 +7,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from eval.compare import compare_to_baseline
-from eval.metrics import EvalMetrics, MetricResult
+from eval.metrics import EvalMetrics
 
 
 def _make_metrics(**overrides) -> EvalMetrics:

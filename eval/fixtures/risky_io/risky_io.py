@@ -1,7 +1,6 @@
 # risky_io.py — 4 functions with direct file/network I/O.
 # The testability triage classifier should flag all 4 as risky or blocked,
 # so the harness expects 0 LLM calls and 0 tests accepted for this fixture.
-import json
 import urllib.request
 import requests
 import subprocess

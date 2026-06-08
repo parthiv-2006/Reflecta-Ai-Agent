@@ -3,17 +3,14 @@
 import json
 import sys
 import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from typer.testing import CliRunner
 
 from eval.cli import eval_app
-from eval.metrics import EvalMetrics, EvalReport, MetricResult
+from eval.metrics import EvalMetrics, MetricResult
 
 
 runner = CliRunner()

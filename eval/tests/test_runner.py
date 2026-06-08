@@ -3,15 +3,12 @@
 import json
 import sys
 import os
-import shutil
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from eval.runner import _infer_stop_reason, _metrics_from_report, run_fixture
-from eval.metrics import EvalMetrics
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
