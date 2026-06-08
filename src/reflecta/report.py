@@ -50,4 +50,7 @@ def read_report(path: Path) -> RunReport:
         escalations_succeeded=data.get("escalations_succeeded", 0),
         budget=data.get("budget", ""),
         stop_reason=data.get("stop_reason", ""),
+        llm_calls_gemini=data.get("llm_calls_gemini", 0),
+        llm_calls_groq=data.get("llm_calls_groq", 0),
+        llm_calls_claude=data.get("llm_calls_claude", 0),
     )

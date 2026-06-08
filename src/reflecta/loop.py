@@ -450,6 +450,7 @@ def run_loop(
     python_exe: str | None = None,
     skip_entrypoints: bool = True,
     attempt_risky: bool = False,
+    cache_dir: Path | None = None,
     ui: "ReflectaUI | None" = None,
 ) -> RunReport:
     """Main orchestration loop.
@@ -639,9 +640,15 @@ def run_loop(
                         repo_path=repo_path,
                         gemini_client=gemini_client,
                         claude_client=claude_client,
-                        cache_dir=repo_path / COVERAGE_DIR / "gen_cache",
+                        cache_dir=cache_dir or (repo_path / COVERAGE_DIR / "gen_cache"),
                     )
                 budget.charge(test.generation_calls)
+
+                # Track provider call counts on the report.
+                if "claude" in test.model_used.lower():
+                    report.llm_calls_claude += test.generation_calls
+                else:
+                    report.llm_calls_gemini += test.generation_calls
 
                 # Structurally unrunnable draft (empty, no test, missing import).
                 # Repair cannot rescue these — it would feed garbage to Groq and
@@ -780,6 +787,13 @@ def run_loop(
 
                     report.repair_attempts_used += len(attempts)
                     budget.charge(len(attempts))
+
+                    # Track repair provider calls on the report.
+                    for att in attempts:
+                        if "claude" in att.model_used.lower():
+                            report.llm_calls_claude += 1
+                        else:
+                            report.llm_calls_groq += 1
 
                     if repaired is None:
                         if escalate:

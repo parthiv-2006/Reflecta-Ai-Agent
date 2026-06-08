@@ -67,3 +67,8 @@ markers = ["live: requires real API keys — skipped in CI"]
 
 [tool.coverage.run]
 source = ["src/reflecta"]
+
+[tool.ruff]
+# LLM-generated cache entries in eval/recordings/ are not hand-written code
+# and intentionally contain unused imports, non-standard style, etc.
+exclude = ["eval/recordings"]
