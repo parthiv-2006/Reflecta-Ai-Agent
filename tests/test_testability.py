@@ -1,3 +1,5 @@
+import textwrap
+
 from reflecta.testability import (
     BLOCKED,
     RISKY,
@@ -122,6 +124,67 @@ def test_subprocess_call_is_risky():
         "    return subprocess.run(cmd, capture_output=True)\n"
     )
     assert classify_target(src, "run_it").level == RISKY
+
+
+def test_classify_target_transitive_risky_via_helper():
+    """A function that only calls a local helper which does network I/O
+    should be classified RISKY, not TESTABLE."""
+    source = textwrap.dedent("""
+        import requests
+
+        def _fetch(url):
+            return requests.get(url)
+
+        def process(url):
+            return _fetch(url)
+    """)
+    v = classify_target(source, "process")
+    assert v.level == RISKY
+    assert "_fetch" in v.reason or "I/O" in v.reason
+
+
+def test_classify_target_direct_risky_unaffected():
+    """A directly-risky function should still be RISKY (regression guard)."""
+    source = textwrap.dedent("""
+        import requests
+
+        def _fetch(url):
+            return requests.get(url)
+    """)
+    v = classify_target(source, "_fetch")
+    assert v.level == RISKY
+
+
+def test_classify_target_pure_helper_not_infected():
+    """A function that only calls a pure (non-risky) local helper should
+    remain TESTABLE — the transitive check must not over-flag."""
+    source = textwrap.dedent("""
+        import requests
+
+        def _normalize(text):
+            return text.strip().lower()
+
+        def process(text):
+            return _normalize(text)
+    """)
+    v = classify_target(source, "process")
+    assert v.level == TESTABLE
+
+
+def test_classify_target_di_parameter_not_flagged():
+    """A function that receives a client as a parameter and calls it is
+    dependency injection — must remain TESTABLE (existing contract)."""
+    source = textwrap.dedent("""
+        import requests
+
+        def _call(session, url):
+            return session.get(url)
+
+        def process(client, url):
+            return _call(client, url)
+    """)
+    v = classify_target(source, "process")
+    assert v.level == TESTABLE
 
 
 def test_unparseable_source_defaults_testable():
