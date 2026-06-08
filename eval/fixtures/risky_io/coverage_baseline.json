@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "version": "7.x",
+    "timestamp": "2026-06-08",
+    "branch_coverage": false,
+    "show_contexts": false
+  },
+  "files": {
+    "risky_io.py": {
+      "executed_lines": [],
+      "summary": {
+        "covered_lines": 0,
+        "num_statements": 12,
+        "percent_covered": 0.0,
+        "missing_lines": 12,
+        "excluded_lines": 0
+      },
+      "missing_lines": [6, 7, 8, 12, 13, 17, 18, 22, 23, 27, 28, 29],
+      "excluded_lines": []
+    }
+  },
+  "totals": {
+    "covered_lines": 0,
+    "num_statements": 12,
+    "percent_covered": 0.0,
+    "missing_lines": 12,
+    "excluded_lines": 0
+  }
+}
