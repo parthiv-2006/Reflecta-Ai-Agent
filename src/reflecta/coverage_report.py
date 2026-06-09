@@ -62,6 +62,24 @@ def _detect_entrypoints(tree: ast.Module) -> set[str]:
     return entrypoints
 
 
+_TEST_DIR_NAMES = frozenset({"tests", "test", "_tests", "_reflecta"})
+
+
+def _is_test_file(rel_path: Path) -> bool:
+    """True for files that are tests, not testable source.
+
+    Coverage runs with ``--source=.`` on flat repos, so ``tests/`` (including
+    reflecta's own ``tests/_reflecta/`` output) lands in coverage.json. Without
+    this filter those files become CoverageTargets and reflecta generates tests
+    *for its own generated tests* — every target is garbage, and the target list
+    grows run over run until the Gemini daily quota drains into it.
+    """
+    name = rel_path.name
+    if name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py"):
+        return True
+    return any(part in _TEST_DIR_NAMES for part in rel_path.parts[:-1])
+
+
 def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget]:
     """Parse a coverage.json dict into CoverageTarget objects.
 
@@ -79,6 +97,9 @@ def extract_targets(coverage_json: dict, repo_path: Path) -> list[CoverageTarget
     for file_str, file_data in coverage_json.get("files", {}).items():
         missing: list[int] = file_data.get("missing_lines", [])
         if not missing:
+            continue
+
+        if _is_test_file(Path(file_str)):
             continue
 
         abs_path = (repo_path / file_str).resolve()

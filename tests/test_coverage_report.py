@@ -244,3 +244,53 @@ if __name__ == "__main__":
 
     assert targets["run"].is_entrypoint is True
     assert targets["pure"].is_entrypoint is False
+
+
+# ---------------------------------------------------------------------------
+# Test files must never become coverage targets. When coverage runs with
+# --source=. (flat repos), tests/ and tests/_reflecta/ land in coverage.json;
+# without this filter reflecta generates tests *for its own generated tests*,
+# inflating every subsequent run and burning Gemini RPD on garbage targets.
+# ---------------------------------------------------------------------------
+
+
+def _multi_coverage_json(entries: dict[str, list[int]]) -> dict:
+    return {
+        "files": {
+            name: {
+                "summary": {"percent_covered": 50.0},
+                "missing_lines": missing,
+                "missing_branches": [],
+            }
+            for name, missing in entries.items()
+        },
+        "totals": {"percent_covered": 50.0},
+    }
+
+
+def test_test_files_and_conftest_excluded(tmp_path: Path) -> None:
+    func = "def f(x):\n    return x\n"
+    _write_source(tmp_path, "calc.py", func)
+    _write_source(tmp_path, "conftest.py", func)
+    (tmp_path / "tests" / "_reflecta").mkdir(parents=True)
+    (tmp_path / "tests" / "test_calc.py").write_text(func)
+    (tmp_path / "tests" / "helpers.py").write_text(func)
+    (tmp_path / "tests" / "_reflecta" / "test_reflecta_calc_0.py").write_text(func)
+    _write_source(tmp_path, "calc_test.py", func)
+
+    cov = _multi_coverage_json(
+        {
+            "calc.py": [2],
+            "conftest.py": [2],
+            "tests/test_calc.py": [2],
+            "tests/helpers.py": [2],
+            "tests/_reflecta/test_reflecta_calc_0.py": [2],
+            "calc_test.py": [2],
+        }
+    )
+
+    targets = extract_targets(cov, tmp_path)
+
+    # Only the real source module survives — anything under a test dir, any
+    # test_*.py / *_test.py, and conftest.py are filtered out.
+    assert [str(t.file_path) for t in targets] == [str(tmp_path / "calc.py")]
