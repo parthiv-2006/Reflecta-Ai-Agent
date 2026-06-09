@@ -105,3 +105,24 @@ def test_measure_coverage_isolated_reports_suite_failure(tmp_path):
     _pct, passed = measure_coverage_isolated(tmp_path)
 
     assert passed is False
+
+
+def test_isolated_measures_same_basis_as_baseline(tmp_path):
+    """measure_coverage_isolated must count never-imported source files exactly
+    like measure_coverage_real does (seed + --source), or the delta gate
+    compares incompatible percentages and keeps/discards tests wrongly."""
+    from reflecta.loop import measure_coverage_real
+
+    _make_repo(tmp_path)
+    # A source module no test imports: the baseline's seed counts its lines as
+    # 0% covered; without the same basis the isolated run omits it entirely
+    # and reports an inflated percentage.
+    (tmp_path / "orphan.py").write_text(
+        "def g(x):\n    return x + 1\n\n\ndef h(x):\n    return x - 1\n"
+    )
+
+    real_pct, real_ok = measure_coverage_real(tmp_path)
+    iso_pct, iso_ok = measure_coverage_isolated(tmp_path)
+
+    assert real_ok and iso_ok
+    assert abs(real_pct - iso_pct) < 0.01
