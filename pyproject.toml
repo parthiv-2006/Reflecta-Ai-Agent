@@ -69,6 +69,7 @@ markers = ["live: requires real API keys — skipped in CI"]
 source = ["src/reflecta"]
 
 [tool.ruff]
-# LLM-generated cache entries in eval/recordings/ are not hand-written code
-# and intentionally contain unused imports, non-standard style, etc.
-exclude = ["eval/recordings"]
+# LLM-generated code (eval/recordings/ cache entries and tests/_reflecta/
+# generated test files) is not hand-written and intentionally contains unused
+# imports, non-standard style, etc.
+exclude = ["eval/recordings", "**/_reflecta"]
