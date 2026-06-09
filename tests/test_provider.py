@@ -215,3 +215,108 @@ def test_request_too_large_is_not_retried_by_call_with_retry(monkeypatch):
         call_with_retry(raises_413, max_retries=5)
     assert calls["n"] == 1
     assert sleeps == []
+
+
+# ---------------------------------------------------------------------------
+# 429 handling must be window-aware: honor the provider's "try again in Xs"
+# hint, wait into the next minute for per-minute limits, and fail fast on
+# daily caps (no amount of backoff revives an exhausted daily quota).
+# ---------------------------------------------------------------------------
+
+_GROQ_429_WITH_HINT = (
+    "Error code: 429 - {'error': {'message': 'Rate limit reached for model "
+    "`llama-3.1-8b-instant` on tokens per minute (TPM): Limit 6000, Used 5800. "
+    "Please try again in 7.66s.', 'code': 'rate_limit_exceeded'}}"
+)
+
+_GEMINI_429_RETRY_DELAY = (
+    "429 RESOURCE_EXHAUSTED. Quota exceeded for quota metric "
+    "'GenerateRequestsPerMinutePerProjectPerModel'. "
+    '"retryDelay": "26s"'
+)
+
+_GEMINI_429_DAILY = (
+    "429 RESOURCE_EXHAUSTED. Quota exceeded for quota metric "
+    "'GenerateRequestsPerDayPerProjectPerModel': limit 250 requests per day."
+)
+
+
+def test_parse_retry_hint_groq_seconds():
+    from reflecta.llm.provider import parse_retry_hint
+
+    assert parse_retry_hint(_GROQ_429_WITH_HINT) == pytest.approx(7.66)
+
+
+def test_parse_retry_hint_groq_minutes_and_seconds():
+    from reflecta.llm.provider import parse_retry_hint
+
+    assert parse_retry_hint("Please try again in 2m59.56s.") == pytest.approx(179.56)
+
+
+def test_parse_retry_hint_gemini_retry_delay():
+    from reflecta.llm.provider import parse_retry_hint
+
+    assert parse_retry_hint(_GEMINI_429_RETRY_DELAY) == pytest.approx(26.0)
+
+
+def test_parse_retry_hint_absent_returns_none():
+    from reflecta.llm.provider import parse_retry_hint
+
+    assert parse_retry_hint("429 Too Many Requests") is None
+
+
+def test_retry_waits_at_least_the_provider_hint(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("reflecta.llm.provider.time.sleep", lambda s: sleeps.append(s))
+
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RateLimitError(_GROQ_429_WITH_HINT, provider="Groq")
+        return "ok"
+
+    assert call_with_retry(flaky, max_retries=5, base_delay=1.0) == "ok"
+    # First sleep must cover the provider's suggested 7.66s, not the 1s
+    # exponential step that previously guaranteed another 429.
+    assert len(sleeps) == 1
+    assert sleeps[0] >= 7.66
+
+
+def test_per_minute_429_without_hint_waits_into_next_window(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("reflecta.llm.provider.time.sleep", lambda s: sleeps.append(s))
+
+    def always():
+        raise RateLimitError(
+            "429: rate limit on tokens per minute (TPM)", provider="Groq"
+        )
+
+    with pytest.raises(BudgetExhausted):
+        call_with_retry(always, max_retries=3, base_delay=1.0)
+
+    # Cumulative wait must span a full 60s minute window — 1+2+4s never can.
+    assert sum(sleeps) >= 60
+
+
+def test_daily_cap_429_fails_fast_without_retries(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("reflecta.llm.provider.time.sleep", lambda s: sleeps.append(s))
+
+    calls = {"n": 0}
+
+    def daily():
+        calls["n"] += 1
+        raise RateLimitError(_GEMINI_429_DAILY, provider="Gemini (test generation)")
+
+    with pytest.raises(BudgetExhausted) as ei:
+        call_with_retry(daily, max_retries=5, base_delay=1.0)
+
+    # A daily cap cannot be waited out — one attempt, zero sleeps, clear message.
+    assert calls["n"] == 1
+    assert sleeps == []
+    msg = str(ei.value)
+    assert "Gemini (test generation)" in msg
+    assert "429" in msg
+    assert "DAILY" in msg
