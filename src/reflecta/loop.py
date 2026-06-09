@@ -315,10 +315,23 @@ def measure_coverage_isolated(
         data_file = tmp_root / ".coverage"
         json_file = tmp_root / "coverage.json"
         env = child_env(tmp_repo)
+        # Measure on the SAME basis as measure_coverage_real (seed run +
+        # --source flags): without it, source files no test imports are absent
+        # from this report but present in the baseline's, so the two percents
+        # have different denominators and the delta gate decides on noise.
+        sources = _source_dirs(tmp_repo)
+        source_flags = [f"--source={s}" for s in sources]
+        seed_file = tmp_repo / "_reflecta_seed.py"
+        seed_file.write_text("pass\n", encoding="utf-8")
         try:
+            subprocess.run(
+                [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
+                 *source_flags, str(seed_file)],
+                cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
+            )
             proc = subprocess.run(
                 [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
-                 "-m", "pytest", "--tb=no", "-q"],
+                 *source_flags, "--append", "-m", "pytest", "--tb=no", "-q"],
                 cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
             )
         except subprocess.TimeoutExpired:
@@ -326,7 +339,7 @@ def measure_coverage_isolated(
         passed = proc.returncode == 0
         subprocess.run(
             [sys_executable, "-m", "coverage", "json", f"--data-file={data_file}",
-             "--ignore-errors", "-o", str(json_file)],
+             "--ignore-errors", f"--omit={seed_file.name}", "-o", str(json_file)],
             cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
         )
         if not json_file.exists():
@@ -814,6 +827,11 @@ def run_loop(
                                 claude_client=claude_client,
                             )
                             if repaired is None:
+                                # Hard rule: only KEPT tests stay on disk. A broken
+                                # leftover with a collection error interrupts pytest
+                                # for the whole suite, collapsing every subsequent
+                                # coverage measurement.
+                                test.test_file_path.unlink(missing_ok=True)
                                 target.status = TargetStatus.ESCALATED
                                 iter_count += 1
                                 stall += 1
@@ -826,6 +844,9 @@ def run_loop(
                                 ui.step("Escalation", ok=True, note="Claude fixed it")
                             report.escalations_succeeded += 1
                         else:
+                            # Same as the escalation-failed path: never leave a
+                            # non-kept (and known-broken) generated test on disk.
+                            test.test_file_path.unlink(missing_ok=True)
                             target.status = TargetStatus.FAILED
                             iter_count += 1
                             stall += 1

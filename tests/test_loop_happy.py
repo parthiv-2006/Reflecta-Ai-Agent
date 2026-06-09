@@ -162,3 +162,43 @@ def test_happy_path_run_fails_marks_failed(tmp_path):
     assert report.tests_kept == 0
     assert targets[0].status == TargetStatus.FAILED
     assert report.stop_reason == "exhausted"
+
+
+def test_failed_repair_deletes_generated_test_file(tmp_path):
+    """A target whose repair budget is exhausted must not leave its broken
+    generated test on disk: one leftover with a collection error interrupts
+    pytest for the WHOLE suite, so every later coverage measurement collapses
+    and every subsequent passing test is wrongly discarded (observed live on
+    gist-backend: baseline 70.8% measured as 27.5% mid-run)."""
+    from reflecta.loop import run_loop
+
+    targets = [_target("func_a")]
+    generated: list[Path] = []
+
+    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+        t = _gen_test(target, tmp_path)
+        generated.append(t.test_file_path)
+        return t
+
+    def fake_run_test(test_file, repo_path, timeout_s=30, **kwargs):
+        return RunResult(passed=False, traceback="AssertionError", duration=0.1)
+
+    def fake_measure(*a, **k):
+        return (50.0, True)
+
+    with (
+        patch("reflecta.loop.extract_targets", return_value=targets),
+        patch("reflecta.loop.generate_test", side_effect=fake_generate),
+        patch("reflecta.loop.run_test_isolated", side_effect=fake_run_test),
+        patch("reflecta.loop.repair_test", return_value=(None, [])),
+        patch("reflecta.loop.measure_coverage_real", side_effect=fake_measure),
+        patch("reflecta.loop.measure_coverage_isolated", side_effect=fake_measure),
+    ):
+        report = run_loop(tmp_path, max_iters=10)
+
+    assert targets[0].status == TargetStatus.FAILED
+    assert report.tests_kept == 0
+    assert generated, "generate was never called"
+    assert not generated[0].exists(), (
+        "exhausted-repair target left its broken test file on disk"
+    )
