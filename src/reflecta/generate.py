@@ -1,5 +1,6 @@
 import ast
 import re
+import string
 from pathlib import Path
 
 from reflecta.llm import router
@@ -55,6 +56,26 @@ def collect_existing_tests(
         except OSError:
             continue
     return "\n\n".join(chunks)[:max_chars]
+
+
+_SAFE_CHARS = frozenset(string.ascii_letters + string.digits + "_")
+
+
+def _sanitize_module_name(name: str) -> str:
+    """Strip any character that is not alphanumeric or underscore.
+
+    ``module_name`` is derived from ``Path(target.file_path).stem``, which
+    comes ultimately from a coverage.json that reflecta itself generates.
+    However, a crafted or corrupted coverage.json (or a file whose stem
+    contains path separators / dots / dashes) could escape the
+    ``tests/_reflecta/`` directory via path traversal when the name is
+    interpolated into a ``Path / f"test_reflecta_{module_name}_N.py"``
+    expression.  Keeping only ``[A-Za-z0-9_]`` chars makes the result
+    safe for filesystem use without further quoting.
+    """
+    sanitized = "".join(c for c in name if c in _SAFE_CHARS)
+    # Fall back to a placeholder so we never produce an empty path component.
+    return sanitized or "module"
 
 
 def _next_counter(reflecta_dir: Path, module_name: str) -> int:
@@ -115,10 +136,16 @@ def generate_test(
             break
         structural_error = reason
 
-    module_name = Path(target.file_path).stem
+    module_name = _sanitize_module_name(Path(target.file_path).stem)
     reflecta_dir = Path(repo_path) / "tests" / "_reflecta"
     counter = _next_counter(reflecta_dir, module_name)
     test_file_path = reflecta_dir / f"test_reflecta_{module_name}_{counter}.py"
+    # Belt-and-suspenders: confirm the resolved path stays inside _reflecta/.
+    # This catches any future code path that bypasses _sanitize_module_name.
+    if not test_file_path.resolve().is_relative_to(reflecta_dir.resolve()):
+        raise ValueError(
+            f"Generated test path escapes _reflecta/: {test_file_path}"
+        )
 
     reflecta_dir.mkdir(parents=True, exist_ok=True)
     # encoding="utf-8" is required: generated tests routinely contain non-ASCII

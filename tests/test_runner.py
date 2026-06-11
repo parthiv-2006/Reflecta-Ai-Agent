@@ -39,6 +39,24 @@ def test_child_env_strips_api_keys(monkeypatch):
     assert env.get("PATH") == "/usr/bin"
 
 
+def test_child_env_strips_reflecta_token(monkeypatch):
+    """Security: REFLECTA_TOKEN must be stripped from the child env so a
+    generated (or prompt-injected) test cannot read the user's key-broker
+    auth token and exfiltrate it."""
+    from reflecta.runner import child_env
+
+    monkeypatch.setenv("REFLECTA_TOKEN", "secret-reflecta-token")
+    monkeypatch.setenv("REFLECTA_TOKENS", "tok1:100,tok2:50")
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    env = child_env()
+
+    assert "REFLECTA_TOKEN" not in env
+    assert "REFLECTA_TOKENS" not in env
+    # Non-secret vars should pass through
+    assert env.get("PATH") == "/usr/bin"
+
+
 def test_runner_passes_scrubbed_env_to_subprocess(tmp_path, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "secret-gemini")
     test_file = tmp_path / "test_ok.py"

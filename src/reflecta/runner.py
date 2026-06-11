@@ -11,11 +11,23 @@ from reflecta.models import RunResult
 def child_env(repo_path: Path | None = None) -> dict[str, str]:
     """Environment for subprocesses that execute LLM-generated tests.
 
-    Strips every ``*_API_KEY`` so a generated (or prompt-injected) test cannot
-    read the provider secrets that live in the parent process. The interpreter
+    Strips every ``*_API_KEY`` and every reflecta-specific credential/token so
+    a generated (or prompt-injected) test cannot read the provider secrets or
+    the reflecta auth token that live in the parent process. The interpreter
     still needs PATH/SYSTEMROOT/PYTHONPATH, so we copy everything else.
+
+    Scrubbed names (exact match or suffix):
+      • anything ending in ``_API_KEY``   — provider keys (Gemini, Groq, Anthropic…)
+      • ``REFLECTA_TOKEN``                — user's key-broker auth token
+      • ``REFLECTA_TOKENS``               — operator's token list (proxy side)
+      • ``REFLECTA_CONFIG_DIR``           — not a secret, but no test needs it
     """
-    env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+    _SCRUB_EXACT = frozenset({"REFLECTA_TOKEN", "REFLECTA_TOKENS", "REFLECTA_CONFIG_DIR"})
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.endswith("_API_KEY") and k not in _SCRUB_EXACT
+    }
     if repo_path is not None:
         repo_path = Path(repo_path).resolve()
         if repo_path.exists():

@@ -103,6 +103,29 @@ def test_provider_error_is_502():
     assert _post(client, "good-token").status_code == 502
 
 
+def test_provider_error_detail_does_not_echo_exception_text():
+    """Security: the 502 detail must NOT echo the raw exception string.
+
+    Provider SDK exceptions can include the API key or full request headers in
+    their repr.  The detail returned to callers must be a generic message only;
+    the real cause is logged server-side where the operator can see it.
+    """
+    api_key_in_exc = "AIzaSy-SECRET-KEY-SHOULD-NOT-LEAK"
+
+    def boom(prompt, model):
+        raise RuntimeError(f"invalid_api_key: {api_key_in_exc}")
+
+    config = ProxyConfig(tokens={"good-token": 5}, generate_fn=boom, repair_fn=boom)
+    client = TestClient(create_app(config))
+    r = _post(client, "good-token")
+    assert r.status_code == 502
+    # The raw exception text (including any embedded key) must not appear in the
+    # response body that is returned to the caller.
+    body = r.text
+    assert api_key_in_exc not in body
+    assert "SECRET" not in body
+
+
 def test_parse_tokens_formats():
     from app import _parse_tokens
 

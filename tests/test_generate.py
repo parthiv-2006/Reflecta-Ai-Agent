@@ -246,6 +246,64 @@ def test_method_target_imports_class_not_method(monkeypatch, tmp_path):
     assert "from Calculator import add" not in captured["prompt"]
 
 
+def test_sanitize_module_name_strips_path_separators():
+    """Security: module_name derived from file stem must have path separators and
+    dots stripped so a crafted coverage.json cannot escape tests/_reflecta/."""
+    from reflecta.generate import _sanitize_module_name
+
+    # Path separators must be removed
+    assert _sanitize_module_name("../../../evil") == "evil"
+    assert _sanitize_module_name("..\\..\\evil") == "evil"
+    # Dots and dashes stripped
+    assert _sanitize_module_name("my.module-name") == "mymodulename"
+    # Normal names pass through unchanged
+    assert _sanitize_module_name("calc") == "calc"
+    assert _sanitize_module_name("my_module_123") == "my_module_123"
+    # Empty result gets a safe placeholder
+    assert _sanitize_module_name("...") == "module"
+    assert _sanitize_module_name("") == "module"
+
+
+def test_generate_test_path_traversal_blocked(monkeypatch, tmp_path):
+    """Security: even if a file stem looks like a path traversal attempt, the
+    generated test file must remain inside tests/_reflecta/."""
+    monkeypatch.setattr(
+        "reflecta.llm.router.generate",
+        lambda *a, **kw: SIMPLE_TEST_SOURCE,
+    )
+
+    # Simulate a target whose file stem contains traversal characters.
+    # After sanitization this should write to tests/_reflecta/test_reflecta_evil_0.py
+    target = _make_target(tmp_path / "../../../evil.py", [2])
+    # Override file_path to a safe path that exists, but use a stem that looks malicious
+    target = CoverageTarget(
+        file_path=tmp_path / "evil.py",
+        qualified_name="evil",
+        missing_lines=[2],
+        priority=1.0,
+        status=TargetStatus.PENDING,
+    )
+    # Monkeypatch the stem to simulate a crafted coverage.json entry
+    import reflecta.generate as gen_module
+    original_sanitize = gen_module._sanitize_module_name
+
+    call_count = {"n": 0}
+
+    def patched_sanitize(name):
+        call_count["n"] += 1
+        return original_sanitize(name)
+
+    monkeypatch.setattr(gen_module, "_sanitize_module_name", patched_sanitize)
+
+    result = generate_test(target, "def evil(): pass", "", repo_path=tmp_path)
+
+    # Sanitizer must have been called
+    assert call_count["n"] >= 1
+    # Written path must be inside _reflecta/
+    reflecta_dir = (tmp_path / "tests" / "_reflecta").resolve()
+    assert result.test_file_path.resolve().is_relative_to(reflecta_dir)
+
+
 @pytest.mark.live
 def test_live_ast_valid():
     calc_path = Path("examples/sample_project/calc.py")
