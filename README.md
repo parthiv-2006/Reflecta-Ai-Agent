@@ -222,6 +222,8 @@ python -m reflecta run --path /path/to/repo --python /path/to/repo/.venv/bin/pyt
 
 Before the loop, Reflecta preflights the targets' third-party imports and reports any that are missing, so you see exactly what to install instead of every target failing silently.
 
+Reflecta also verifies that `coverage` and `pytest` exist inside the target environment — they must run *there*, not in Reflecta's own venv. If either is missing, it is pip-installed into the detected target venv automatically (with a warning); if that's impossible the run stops with the exact install command instead of silently reporting a 0.0% baseline.
+
 ### Troubleshooting
 
 | Symptom | What it means | Fix |
@@ -229,6 +231,8 @@ Before the loop, Reflecta preflights the targets' third-party imports and report
 | `LLM quota / rate limit hit` · `Stop reason: budget` | Gemini/Groq free-tier 429. The message names the provider, echoes the raw API text, and distinguishes per-minute from daily caps | Wait ~60s (per-minute) or until daily reset and re-run with a smaller `--max-iters`; or use a paid key |
 | `request too large for model TPM` during repair | The repair prompt exceeded the model's free-tier tokens-per-minute budget (HTTP 413). Reflecta auto-trims and escalates 8B→70B | Usually self-resolves. If it persists the target is marked `failed` and the run continues |
 | `target needs '<pkg>', which is not installed` | The target's dependency isn't importable under the interpreter in use | Install it in that environment, or pass `--python <venv-python>` |
+| `The target environment is missing coverage/pytest` | The target venv lacks the measurement tooling and auto-install failed (offline, read-only env) | Run the printed `pip install` command inside the target venv |
+| `Coverage measurement produced no report` | The coverage run itself crashed under the target interpreter (the captured stderr tail is shown) | Check the printed error; usually a broken venv or unrunnable conftest |
 | Targets reported `skipped` | Entrypoints skipped by default, or drafts that failed both generation and regeneration | Expected. Use `--no-skip-entrypoints` to attempt `main`-style functions |
 
 ### Other commands
