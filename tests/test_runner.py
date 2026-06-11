@@ -207,3 +207,38 @@ def test_run_test_isolated_ignores_heavy_dirs(tmp_path):
     assert ".omc" in ignored_names
     assert "src" not in ignored_names
 
+
+
+def test_exit_zero_with_all_tests_skipped_is_not_a_pass(tmp_path):
+    """pytest exits 0 when every test is skipped (e.g. bare async tests with no
+    asyncio plugin). That must surface as failure_kind='all_skipped' — treating
+    it as a pass let import-time coverage earn a KEPT for tests that never ran."""
+    from reflecta.runner import run_test
+
+    fake_proc = MagicMock()
+    fake_proc.communicate.return_value = (
+        "4 skipped in 0.55s\nSKIPPED [4] async def function and no async plugin installed",
+        "",
+    )
+    fake_proc.returncode = 0
+
+    with patch("reflecta.runner.subprocess.Popen", return_value=fake_proc):
+        result = run_test(tmp_path / "test_x.py", tmp_path)
+
+    assert result.passed is False
+    assert result.failure_kind == "all_skipped"
+    assert "async plugin" in result.traceback  # repair model sees the reason
+
+
+def test_exit_zero_with_passes_and_skips_still_passes(tmp_path):
+    from reflecta.runner import run_test
+
+    fake_proc = MagicMock()
+    fake_proc.communicate.return_value = ("2 passed, 1 skipped in 0.20s", "")
+    fake_proc.returncode = 0
+
+    with patch("reflecta.runner.subprocess.Popen", return_value=fake_proc):
+        result = run_test(tmp_path / "test_x.py", tmp_path)
+
+    assert result.passed is True
+    assert result.failure_kind == ""

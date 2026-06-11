@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -58,6 +59,20 @@ def _classify_failure(returncode: int, traceback: str) -> str:
     return "test_failure"
 
 
+_PASSED_RE = re.compile(r"\b(\d+) passed\b")
+
+
+def _no_test_actually_passed(output: str) -> bool:
+    """True when pytest's summary reports zero passing tests.
+
+    pytest exits 0 when every collected test was *skipped* — e.g. bare
+    ``async def`` tests with no asyncio plugin configured. Treating that as a
+    pass let a file whose tests never ran reach the delta gate, where mere
+    import-time coverage of the target module could earn it a KEPT.
+    """
+    return _PASSED_RE.search(output) is None
+
+
 def run_test(
     test_file: Path,
     repo_path: Path,
@@ -80,6 +95,17 @@ def run_test(
         stdout, stderr = proc.communicate(timeout=timeout_s)
         duration = time.monotonic() - start
         passed = proc.returncode == 0
+        if passed and _no_test_actually_passed(stdout):
+            # Exit 0 with zero passing tests = everything was skipped. The
+            # skip reasons (e.g. "async def function and no async plugin
+            # installed") go to repair as the traceback — that message is
+            # exactly what the repair model needs to rewrite the test.
+            return RunResult(
+                passed=False,
+                traceback=(stdout + stderr).strip(),
+                duration=duration,
+                failure_kind="all_skipped",
+            )
         tb = "" if passed else (stdout + stderr).strip()
         kind = "" if passed else _classify_failure(proc.returncode, tb)
         return RunResult(
