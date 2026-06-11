@@ -47,6 +47,9 @@ Point Reflecta at any Python repository and it:
 | **Un-testable targets** | Network/DB/browser calls at module import time fail at collection regardless of what the model writes | Static testability triage classifies every target before any LLM call; blocked/risky targets are skipped with a reason, not sent to generation to fail |
 | **Hitting HTTP 413 on free tiers** | Groq's free tier has a tokens-per-minute cap (6K for 8B, 12K for 70B); large prompts return 413, not 429 | `limits.py` tracks per-model token budgets; `repair._budget_repair_prompt` trims source/traceback before sending; 413 escalates 8B→70B once, then records a clean failure |
 | **Infinite repair loops** | Without a ceiling, a hard-to-fix test causes unbounded LLM spend | 2-failure rule: `--max-repairs` (default 2) caps attempts per target; exhausted targets are marked `failed`, not retried |
+| **All-or-nothing drafts** | A draft with 3 passing tests and 1 unfixable failure used to be deleted wholesale — most of the value thrown away | Salvage pass: at repair exhaustion, the failing test functions (named in pytest's FAILED/ERROR summary) are AST-stripped by line span; the passing remainder re-runs and faces the same two gates |
+| **Silently-skipped async tests** | Bare `async def test_*` is skipped (exit 0) when the target repo lacks pytest-asyncio config — coverage never moves, quota burns | Generation prompts require synchronous tests that drive async targets via `asyncio.run()` |
+| **Broken target tooling** | A target venv without `coverage` makes every measurement read 0.0% — the run sees zero targets and exits "successfully" | Tooling preflight checks `coverage`+`pytest` under the target interpreter and pip-installs them into the venv; measurement failures raise with the captured stderr instead of returning 0.0 |
 
 ---
 
