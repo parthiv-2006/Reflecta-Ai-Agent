@@ -251,6 +251,15 @@ each user bringing their own. Architecture + rationale:
 - Suggested next step once real-repo numbers exist: an **eval harness** (v2
   backlog) to measure prompt/routing changes objectively.
 
+## Session status 2026-06-11 — robustness on arbitrary repos (verified live on Weave)
+
+- [x] Target tooling preflight: `coverage`/`pytest` checked under the TARGET interpreter, auto-pip-installed into the detected venv; `CoverageMeasurementError` (with stderr tail) instead of silent 0.0% baselines. Commit: `5a80875`.
+- [x] Security hardening (3 HIGH): subprocess env scrubs `REFLECTA_TOKEN*`; proxy 502 no longer echoes provider exception text; module-name sanitization + path guard for generated test paths. Commit: `c8d795b`.
+- [x] Salvage pass: repair-exhausted drafts have failing test functions AST-stripped; passing remainder re-runs through both gates. `RunReport.tests_salvaged`. Commit: `909f9e1`.
+- [x] Async rule in prompts (`asyncio.run()` from sync tests, never bare `async def test_*`). Commit: `aaf033d`.
+- [x] `all_skipped` runner fix: pytest exit 0 with zero passing tests is a repairable failure, not a pass. Commit: `140b894`.
+- [x] Task 19f real-repo numbers: **Weave/python-service 64.0% → 80.4% (+16.4 pp)**, 3 kept files / 18 tests, reflecta suite 278 passing.
+
 ## v2 backlog (remaining)
 
 - [ ] Mutation testing as a stronger quality signal than line coverage.
