@@ -91,6 +91,9 @@ class RunReport:
     tests_kept: int = 0
     tests_discarded: int = 0
     tests_skipped: int = 0
+    # Targets whose repair budget exhausted but whose passing test functions
+    # were salvaged (failing ones AST-stripped) and went on to clear the gates.
+    tests_salvaged: int = 0
     repair_attempts_used: int = 0
     escalations_attempted: int = 0
     escalations_succeeded: int = 0

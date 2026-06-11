@@ -483,6 +483,33 @@ def measure_coverage_isolated(
         shutil.rmtree(tmp_root, ignore_errors=True)
 
 
+def _try_salvage(
+    test: GeneratedTest, last_traceback: str, repo_path: Path, interpreter: str
+) -> bool:
+    """Strip the failing test functions from an exhausted draft and re-run.
+
+    Returns True when the trimmed file passes (it then proceeds to the normal
+    delta gate). Returns False when nothing is salvageable — the caller deletes
+    the file and fails the target exactly as before. Never invents code: only
+    deletes functions pytest named as FAILED/ERROR (see salvage.py).
+    """
+    from reflecta.salvage import failing_test_names, strip_failing_tests
+
+    try:
+        source = test.test_file_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    trimmed = strip_failing_tests(source, failing_test_names(last_traceback))
+    if trimmed is None:
+        return False
+    test.source_code = trimmed
+    if not passes_assertion_gate(test):
+        return False
+    test.test_file_path.write_text(trimmed, encoding="utf-8")
+    rerun = run_test_isolated(test.test_file_path, repo_path, python_exe=interpreter)
+    return rerun.passed
+
+
 def process_test(
     test: GeneratedTest, *, coverage_before: float, coverage_after: float
 ) -> str:
@@ -1004,23 +1031,43 @@ def run_loop(
                                 ui.step("Escalation", ok=True, note="Claude fixed it")
                             report.escalations_succeeded += 1
                         else:
-                            # Same as the escalation-failed path: never leave a
-                            # non-kept (and known-broken) generated test on disk.
-                            test.test_file_path.unlink(missing_ok=True)
-                            target.status = TargetStatus.FAILED
-                            iter_count += 1
-                            stall += 1
-                            logger.info(
-                                "  failed: repair exhausted after %d attempt(s)",
-                                len(attempts),
+                            # Last resort before failing the target: if some of
+                            # the draft's tests pass, strip the failing ones and
+                            # let the passing remainder face the gates.
+                            salvage_tb = (
+                                attempts[-1].traceback if attempts else result.traceback
                             )
-                            if ui:
-                                ui.print_repair_exhausted()
-                            continue
+                            if _try_salvage(test, salvage_tb, repo_path, interpreter):
+                                report.tests_salvaged += 1
+                                logger.info(
+                                    "  salvaged: failing tests stripped; passing "
+                                    "remainder advances to the delta gate"
+                                )
+                                if ui:
+                                    ui.step(
+                                        "Salvage",
+                                        ok=True,
+                                        note="failing tests removed — passing remainder kept for gating",
+                                    )
+                            else:
+                                # Same as the escalation-failed path: never leave a
+                                # non-kept (and known-broken) generated test on disk.
+                                test.test_file_path.unlink(missing_ok=True)
+                                target.status = TargetStatus.FAILED
+                                iter_count += 1
+                                stall += 1
+                                logger.info(
+                                    "  failed: repair exhausted after %d attempt(s)",
+                                    len(attempts),
+                                )
+                                if ui:
+                                    ui.print_repair_exhausted()
+                                continue
 
-                    # repair succeeded — treat repaired test as the passing test
-                    logger.info("  repaired after %d attempt(s)", len(attempts))
-                    test = repaired
+                    if repaired is not None:
+                        # repair succeeded — treat repaired test as the passing test
+                        logger.info("  repaired after %d attempt(s)", len(attempts))
+                        test = repaired
 
                 with ui.spin("Measuring delta") if ui else contextlib.nullcontext():
                     coverage_after, suite_passed = measure_coverage_isolated(
