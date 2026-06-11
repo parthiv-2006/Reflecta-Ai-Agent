@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 
 from reflecta.config import load_dotenv, require_credentials
-from reflecta.loop import run_loop
+from reflecta.loop import CoverageMeasurementError, run_loop
 from reflecta.report import read_report, write_report
 from reflecta.ui import ReflectaUI
 
@@ -18,7 +18,6 @@ try:
     app.add_typer(eval_app, name="eval")
 except ImportError:
     pass  # eval/ not installed — eval commands simply absent
-
 
 
 @app.command()
@@ -114,12 +113,16 @@ def run(
 
         ui = ReflectaUI()
         ui.banner()
-        plan = triage_repo(
-            path,
-            python_exe=python,
-            skip_entrypoints=skip_entrypoints,
-            attempt_risky=attempt_risky,
-        )
+        try:
+            plan = triage_repo(
+                path,
+                python_exe=python,
+                skip_entrypoints=skip_entrypoints,
+                attempt_risky=attempt_risky,
+            )
+        except (EnvironmentError, CoverageMeasurementError) as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1)
         ui.print_triage(plan, attempt_risky=attempt_risky)
         return
 
@@ -130,21 +133,25 @@ def run(
         raise typer.Exit(code=1)
     ui = ReflectaUI()
     ui.banner()
-    report = run_loop(
-        path,
-        max_iters=max_iters,
-        max_repairs=max_repairs,
-        max_llm_calls=max_llm_calls,
-        target_coverage=target_coverage,
-        stall_k=stall_k,
-        escalate=escalate,
-        max_claude_iters=max_claude_iters,
-        python_exe=python,
-        skip_entrypoints=skip_entrypoints,
-        attempt_risky=attempt_risky,
-        cache_dir=cache_dir,
-        ui=ui,
-    )
+    try:
+        report = run_loop(
+            path,
+            max_iters=max_iters,
+            max_repairs=max_repairs,
+            max_llm_calls=max_llm_calls,
+            target_coverage=target_coverage,
+            stall_k=stall_k,
+            escalate=escalate,
+            max_claude_iters=max_claude_iters,
+            python_exe=python,
+            skip_entrypoints=skip_entrypoints,
+            attempt_risky=attempt_risky,
+            cache_dir=cache_dir,
+            ui=ui,
+        )
+    except (EnvironmentError, CoverageMeasurementError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
     report_path = path / "reflecta-report.json"
     write_report(report, report_path)
     ui.summary(report, report_path)
@@ -180,12 +187,16 @@ def triage(
     logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
     ui = ReflectaUI()
     ui.banner()
-    plan = triage_repo(
-        path,
-        python_exe=python,
-        skip_entrypoints=skip_entrypoints,
-        attempt_risky=attempt_risky,
-    )
+    try:
+        plan = triage_repo(
+            path,
+            python_exe=python,
+            skip_entrypoints=skip_entrypoints,
+            attempt_risky=attempt_risky,
+        )
+    except (EnvironmentError, CoverageMeasurementError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
     ui.print_triage(plan, attempt_risky=attempt_risky)
 
 

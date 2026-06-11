@@ -17,7 +17,13 @@ from reflecta.gates import passes_assertion_gate, passes_delta_gate
 from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.groq import MODEL_FAST
 from reflecta.llm.provider import BudgetExhausted
-from reflecta.models import GeneratedTest, RepairResult, RunReport, RunResult, TargetStatus
+from reflecta.models import (
+    GeneratedTest,
+    RepairResult,
+    RunReport,
+    RunResult,
+    TargetStatus,
+)
 from reflecta.repair import repair_test
 from reflecta.runner import child_env, run_test_isolated
 from reflecta.selection import select_next
@@ -220,6 +226,7 @@ def measure_coverage(
 def _safe_measure_coverage(repo_path: Path, test_file: Path | None = None) -> float:
     """Invokes measure_coverage safely, handling test mocks that only take 1 arg."""
     import inspect
+
     try:
         sig = inspect.signature(measure_coverage)
         params = list(sig.parameters.values())
@@ -228,7 +235,9 @@ def _safe_measure_coverage(repo_path: Path, test_file: Path | None = None) -> fl
         if accepts_test_file or accepts_kwargs:
             return measure_coverage(repo_path, test_file=test_file)
 
-        accepts_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+        accepts_var_positional = any(
+            p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+        )
         if accepts_var_positional and len(params) == 1:
             return measure_coverage(repo_path, test_file)
 
@@ -240,6 +249,39 @@ def _safe_measure_coverage(repo_path: Path, test_file: Path | None = None) -> fl
             return measure_coverage(repo_path)
 
 
+def _ensure_target_tooling(interpreter: str) -> None:
+    """Make sure coverage+pytest exist under the target interpreter.
+
+    Missing tools are pip-installed into the detected target venv; if they are
+    still missing afterwards (no pip, network down, read-only env) we stop with
+    an actionable error instead of letting every measurement read as 0.0%.
+    """
+    from reflecta.environment import preflight_tooling
+
+    installed, missing = preflight_tooling(interpreter)
+    if installed:
+        logging.getLogger(__name__).warning(
+            "Installed %s into the target environment (%s) — required to "
+            "measure coverage there.",
+            ", ".join(installed),
+            interpreter,
+        )
+    if missing:
+        raise EnvironmentError(
+            f"The target environment is missing {', '.join(missing)} and "
+            f"auto-install failed. Install manually with:\n"
+            f'  "{interpreter}" -m pip install {" ".join(missing)}'
+        )
+
+
+class CoverageMeasurementError(RuntimeError):
+    """The baseline coverage measurement itself failed (not the target's tests).
+
+    Raised instead of silently reporting 0.0% — a fake-zero baseline makes the
+    run see zero targets and exit "successfully" with no explanation.
+    """
+
+
 def measure_coverage_real(
     repo_path: Path, python_exe: str | None = None
 ) -> tuple[float, bool]:
@@ -249,11 +291,16 @@ def measure_coverage_real(
     coverage.json carries real file paths that extract_targets can resolve.
     Coverage artifacts land under .reflecta/ so the repo's own artifacts are
     untouched.
+
+    Raises CoverageMeasurementError when no coverage report is produced at all
+    (e.g. ``coverage`` not installed under the target interpreter).
     """
     from reflecta.environment import detect_interpreter
 
     repo_path = Path(repo_path).resolve()
     data_file, json_file = coverage_paths(repo_path)
+    # A stale report from a previous run must not mask a failed measurement.
+    json_file.unlink(missing_ok=True)
     env = child_env(repo_path)
     sys_executable = python_exe or detect_interpreter(repo_path)
     sources = _source_dirs(repo_path)
@@ -262,26 +309,67 @@ def measure_coverage_real(
     seed_file = repo_path / "_reflecta_seed.py"
     seed_file.write_text("pass\n", encoding="utf-8")
     try:
-        subprocess.run(
-            [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
-             *source_flags, str(seed_file)],
-            cwd=repo_path, capture_output=True, env=env,
+        seed_proc = subprocess.run(
+            [
+                sys_executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--data-file={data_file}",
+                *source_flags,
+                str(seed_file),
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
         )
         proc = subprocess.run(
-            [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
-             *source_flags, "--append", "-m", "pytest", "--tb=no", "-q"],
-            cwd=repo_path, capture_output=True, env=env,
+            [
+                sys_executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--data-file={data_file}",
+                *source_flags,
+                "--append",
+                "-m",
+                "pytest",
+                "--tb=no",
+                "-q",
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
         )
-        subprocess.run(
-            [sys_executable, "-m", "coverage", "json", f"--data-file={data_file}",
-             "--ignore-errors", f"--omit={seed_file.name}", "-o", str(json_file)],
-            cwd=repo_path, capture_output=True, env=env,
+        json_proc = subprocess.run(
+            [
+                sys_executable,
+                "-m",
+                "coverage",
+                "json",
+                f"--data-file={data_file}",
+                "--ignore-errors",
+                f"--omit={seed_file.name}",
+                "-o",
+                str(json_file),
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            env=env,
         )
     finally:
         seed_file.unlink(missing_ok=True)
     passed = proc.returncode == 0
     if not json_file.exists():
-        return 0.0, passed
+        stderr = b"".join(p.stderr or b"" for p in (seed_proc, proc, json_proc)).decode(
+            errors="replace"
+        )
+        tail = stderr.strip().splitlines()[-5:]
+        raise CoverageMeasurementError(
+            f"Coverage measurement produced no report under interpreter "
+            f"{sys_executable}.\n"
+            + ("\n".join(tail) if tail else "(no error output captured)")
+        )
     data = json.loads(json_file.read_text(encoding="utf-8"))
     return data.get("totals", {}).get("percent_covered", 0.0), passed
 
@@ -308,8 +396,17 @@ def measure_coverage_isolated(
             tmp_repo,
             symlinks=True,
             ignore=shutil.ignore_patterns(
-                ".git", "__pycache__", "*.pyc", ".venv", "venv",
-                ".reflecta", ".pytest_cache", "node_modules", "build", "dist", ".omc",
+                ".git",
+                "__pycache__",
+                "*.pyc",
+                ".venv",
+                "venv",
+                ".reflecta",
+                ".pytest_cache",
+                "node_modules",
+                "build",
+                "dist",
+                ".omc",
             ),
         )
         data_file = tmp_root / ".coverage"
@@ -325,22 +422,58 @@ def measure_coverage_isolated(
         seed_file.write_text("pass\n", encoding="utf-8")
         try:
             subprocess.run(
-                [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
-                 *source_flags, str(seed_file)],
-                cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
+                [
+                    sys_executable,
+                    "-m",
+                    "coverage",
+                    "run",
+                    f"--data-file={data_file}",
+                    *source_flags,
+                    str(seed_file),
+                ],
+                cwd=tmp_repo,
+                capture_output=True,
+                env=env,
+                timeout=timeout_s,
             )
             proc = subprocess.run(
-                [sys_executable, "-m", "coverage", "run", f"--data-file={data_file}",
-                 *source_flags, "--append", "-m", "pytest", "--tb=no", "-q"],
-                cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
+                [
+                    sys_executable,
+                    "-m",
+                    "coverage",
+                    "run",
+                    f"--data-file={data_file}",
+                    *source_flags,
+                    "--append",
+                    "-m",
+                    "pytest",
+                    "--tb=no",
+                    "-q",
+                ],
+                cwd=tmp_repo,
+                capture_output=True,
+                env=env,
+                timeout=timeout_s,
             )
         except subprocess.TimeoutExpired:
             return 0.0, False
         passed = proc.returncode == 0
         subprocess.run(
-            [sys_executable, "-m", "coverage", "json", f"--data-file={data_file}",
-             "--ignore-errors", f"--omit={seed_file.name}", "-o", str(json_file)],
-            cwd=tmp_repo, capture_output=True, env=env, timeout=timeout_s,
+            [
+                sys_executable,
+                "-m",
+                "coverage",
+                "json",
+                f"--data-file={data_file}",
+                "--ignore-errors",
+                f"--omit={seed_file.name}",
+                "-o",
+                str(json_file),
+            ],
+            cwd=tmp_repo,
+            capture_output=True,
+            env=env,
+            timeout=timeout_s,
         )
         if not json_file.exists():
             return 0.0, passed
@@ -410,6 +543,7 @@ def triage_repo(
 
     repo_path = Path(repo_path).resolve()
     interpreter = python_exe or detect_interpreter(repo_path)
+    _ensure_target_tooling(interpreter)
     coverage_before, _ = measure_coverage_real(repo_path, python_exe=interpreter)
 
     _, coverage_json_path = coverage_paths(repo_path)
@@ -487,7 +621,14 @@ def run_loop(
     budget = BudgetTracker(max_llm_calls=max_llm_calls)
     interpreter = python_exe or detect_interpreter(repo_path)
 
-    with (ui.spin("Measuring baseline coverage") if ui else contextlib.nullcontext()):
+    with (
+        ui.spin("Checking target environment tooling")
+        if ui
+        else contextlib.nullcontext()
+    ):
+        _ensure_target_tooling(interpreter)
+
+    with ui.spin("Measuring baseline coverage") if ui else contextlib.nullcontext():
         coverage_before, baseline_suite_passed = measure_coverage_real(
             repo_path, python_exe=interpreter
         )
@@ -645,7 +786,7 @@ def run_loop(
             existing_tests = collect_existing_tests(repo_path, target.file_path.stem)
 
             try:
-                with (ui.spin("Generate") if ui else contextlib.nullcontext()):
+                with ui.spin("Generate") if ui else contextlib.nullcontext():
                     test = generate_test(
                         target,
                         source,
@@ -668,9 +809,7 @@ def run_loop(
                 # burn budget. Skip straight to SKIPPED and move on.
                 if test.structural_error is not None:
                     if ui:
-                        ui.step(
-                            "Generate", ok=False, note=test.structural_error
-                        )
+                        ui.step("Generate", ok=False, note=test.structural_error)
                     test.test_file_path.unlink(missing_ok=True)
                     target.status = TargetStatus.SKIPPED
                     report.tests_skipped += 1
@@ -706,12 +845,22 @@ def run_loop(
                         stall += 1
                         logger.info("  discarded: failed assertion gate")
                         continue
-                    with (ui.spin("Run") if ui else contextlib.run_in_executor if False else contextlib.nullcontext()):
+                    with (
+                        ui.spin("Run")
+                        if ui
+                        else contextlib.run_in_executor
+                        if False
+                        else contextlib.nullcontext()
+                    ):
                         result = run_test_isolated(
                             test.test_file_path, repo_path, python_exe=interpreter
                         )
                     if ui:
-                        ui.step("Run", ok=result.passed, note="passing" if result.passed else "failed")
+                        ui.step(
+                            "Run",
+                            ok=result.passed,
+                            note="passing" if result.passed else "failed",
+                        )
 
                 if not result.passed:
                     # Some failures can never be fixed by feeding a traceback to
@@ -752,7 +901,7 @@ def run_loop(
                         break
 
                     try:
-                        with (ui.spin("Repair") if ui else contextlib.nullcontext()):
+                        with ui.spin("Repair") if ui else contextlib.nullcontext():
                             repaired, attempts = repair_test(
                                 test,
                                 result,
@@ -785,7 +934,9 @@ def run_loop(
                     if ui:
                         for att in attempts:
                             ok = att.result == RepairResult.PASS
-                            model_label = "8B" if att.model_used == MODEL_FAST else "70B"
+                            model_label = (
+                                "8B" if att.model_used == MODEL_FAST else "70B"
+                            )
                             if ok:
                                 note = "passing"
                             elif att.traceback.startswith("request too large"):
@@ -810,7 +961,10 @@ def run_loop(
 
                     if repaired is None:
                         if escalate:
-                            from reflecta.escalate import escalate_target  # lazy: opt-in dep
+                            from reflecta.escalate import (
+                                escalate_target,
+                            )  # lazy: opt-in dep
+
                             logger.info(
                                 "  repair exhausted — escalating to Claude (%d iters)",
                                 max_claude_iters,
@@ -835,9 +989,15 @@ def run_loop(
                                 target.status = TargetStatus.ESCALATED
                                 iter_count += 1
                                 stall += 1
-                                logger.info("  escalation failed: target marked ESCALATED")
+                                logger.info(
+                                    "  escalation failed: target marked ESCALATED"
+                                )
                                 if ui:
-                                    ui.step("Escalation", ok=False, note="Claude could not fix it")
+                                    ui.step(
+                                        "Escalation",
+                                        ok=False,
+                                        note="Claude could not fix it",
+                                    )
                                 continue
                             logger.info("  escalation succeeded")
                             if ui:
@@ -851,7 +1011,8 @@ def run_loop(
                             iter_count += 1
                             stall += 1
                             logger.info(
-                                "  failed: repair exhausted after %d attempt(s)", len(attempts)
+                                "  failed: repair exhausted after %d attempt(s)",
+                                len(attempts),
                             )
                             if ui:
                                 ui.print_repair_exhausted()
@@ -861,7 +1022,7 @@ def run_loop(
                     logger.info("  repaired after %d attempt(s)", len(attempts))
                     test = repaired
 
-                with (ui.spin("Measuring delta") if ui else contextlib.nullcontext()):
+                with ui.spin("Measuring delta") if ui else contextlib.nullcontext():
                     coverage_after, suite_passed = measure_coverage_isolated(
                         repo_path, python_exe=interpreter
                     )
@@ -875,7 +1036,9 @@ def run_loop(
                     report.tests_discarded += 1
                     stall += 1
                     iter_count += 1
-                    logger.info("  discarded: test passes alone but breaks the full suite")
+                    logger.info(
+                        "  discarded: test passes alone but breaks the full suite"
+                    )
                     if ui:
                         ui.print_target_discarded(coverage_before, coverage_after)
                     continue
@@ -896,7 +1059,9 @@ def run_loop(
                     report.tests_kept += 1
                     stall = 0
                 else:
-                    logger.info("  discarded: coverage did not rise (%.2f)", coverage_after)
+                    logger.info(
+                        "  discarded: coverage did not rise (%.2f)", coverage_after
+                    )
                     if ui:
                         ui.print_target_discarded(coverage_before, coverage_after)
                     report.tests_discarded += 1
@@ -916,7 +1081,11 @@ def run_loop(
                 break
             except Exception as exc:
                 # One bad target must not abort the whole run.
-                logger.debug("target %s failed unexpectedly", target.qualified_name, exc_info=True)
+                logger.debug(
+                    "target %s failed unexpectedly",
+                    target.qualified_name,
+                    exc_info=True,
+                )
                 if ui:
                     ui.step("Error", ok=False, note=f"{type(exc).__name__}: {exc}")
                 target.status = TargetStatus.FAILED

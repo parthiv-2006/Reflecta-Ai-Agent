@@ -95,6 +95,48 @@ def collect_third_party_roots(source_files: list[Path], repo_path: Path) -> set[
     return {r for r in roots if r and r not in stdlib and r not in local}
 
 
+# Tools reflecta itself needs inside the TARGET interpreter: the baseline and
+# delta measurements run ``<target-python> -m coverage run -m pytest``, so both
+# must be importable there — reflecta's own environment is irrelevant.
+_REQUIRED_TOOLS = ("coverage", "pytest")
+
+
+def preflight_tooling(
+    interpreter: str, *, auto_install: bool = True, timeout_s: int = 300
+) -> tuple[list[str], list[str]]:
+    """Ensure ``coverage`` and ``pytest`` are importable under ``interpreter``.
+
+    Returns ``(installed, still_missing)``. When a tool is missing and
+    ``auto_install`` is true, it is pip-installed into the target environment
+    (the detected venv). Without this, a venv that has the project deps but no
+    ``coverage`` makes every measurement silently report 0.0% — the run sees
+    zero targets and no error.
+
+    Reflecta's own interpreter always has both (they are project deps), so the
+    install path only ever touches a *detected target venv*, never the system
+    Python that reflecta happens to run under.
+    """
+    # Reflecta's own interpreter always has both — they are project deps.
+    if Path(interpreter).resolve() == Path(sys.executable).resolve():
+        return [], []
+    missing = preflight_imports(interpreter, set(_REQUIRED_TOOLS))
+    if not missing:
+        return [], []
+    if not auto_install:
+        return [], missing
+    try:
+        subprocess.run(
+            [interpreter, "-m", "pip", "install", "--quiet", *sorted(missing)],
+            capture_output=True,
+            timeout=timeout_s,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return [], missing
+    still_missing = preflight_imports(interpreter, set(missing))
+    installed = [m for m in missing if m not in still_missing]
+    return installed, still_missing
+
+
 def preflight_imports(interpreter: str, module_roots: set[str]) -> list[str]:
     """Return the subset of ``module_roots`` not importable under ``interpreter``.
 
