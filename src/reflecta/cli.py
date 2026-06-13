@@ -95,6 +95,30 @@ def run(
             "without spending quota."
         ),
     ),
+    mutation: bool = typer.Option(
+        False,
+        "--mutation",
+        help=(
+            "Enable the mutation (honesty) gate: after a test raises coverage, "
+            "plant single-operator mutants in its target and keep the test only "
+            "if it kills enough of them (see --min-mutation-score). Catches "
+            "coverage-padding tests that run the code but assert nothing real. "
+            "No LLM quota, but adds subprocess runs per kept test."
+        ),
+    ),
+    min_mutation_score: float = typer.Option(
+        0.5,
+        "--min-mutation-score",
+        help=(
+            "Minimum fraction of mutants a kept test must kill (0.0–1.0). Only "
+            "used with --mutation. A function with no mutable surface scores 1.0."
+        ),
+    ),
+    max_mutants: int = typer.Option(
+        30,
+        "--max-mutants",
+        help="Cap on mutants generated per target under --mutation.",
+    ),
 ) -> None:
     """Generate coverage-raising tests for the repository at PATH."""
     path = path.resolve()
@@ -147,6 +171,9 @@ def run(
             skip_entrypoints=skip_entrypoints,
             attempt_risky=attempt_risky,
             cache_dir=cache_dir,
+            mutation=mutation,
+            min_mutation_score=min_mutation_score,
+            max_mutants=max_mutants,
             ui=ui,
         )
     except (EnvironmentError, CoverageMeasurementError) as exc:
