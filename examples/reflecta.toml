@@ -1,0 +1,19 @@
+# Example reflecta.toml — drop this at your repo root to pin run/ci defaults so
+# `reflecta ci --path .` needs no flags. Explicit CLI flags always override it.
+# All keys are optional; unknown keys are ignored.
+
+[tool.reflecta]
+# --- loop ---
+max_iters = 25            # max targets to attempt per run
+target_coverage = 85.0    # stop once total coverage reaches this percent
+stall_k = 7               # stop after K consecutive targets that don't raise coverage
+attempt_risky = false     # also attempt network/DB/IO targets (rarely worth the quota)
+
+# --- mutation (honesty) gate ---
+mutation = true           # keep a test only if it also kills planted mutants
+min_mutation_score = 0.5  # minimum mutant-kill fraction
+max_mutants = 30          # cap on mutants generated per target
+
+# --- ci (pull request) ---
+base_branch = "main"            # PR target (default: the remote's default branch)
+head_branch = "reflecta/auto-tests"  # branch reflecta pushes to
