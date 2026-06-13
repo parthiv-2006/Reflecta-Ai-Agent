@@ -1,6 +1,7 @@
 import logging
 import shutil
 from pathlib import Path
+from typing import Optional
 
 import typer
 
@@ -182,6 +183,142 @@ def run(
     report_path = path / "reflecta-report.json"
     write_report(report, report_path)
     ui.summary(report, report_path)
+
+
+@app.command()
+def ci(
+    path: Path = typer.Option(..., help="Path to the repository to analyse."),
+    base: Optional[str] = typer.Option(
+        None,
+        "--base",
+        help="Base branch for the PR (default: the remote's default branch).",
+    ),
+    head: Optional[str] = typer.Option(
+        None,
+        "--head",
+        help="Branch reflecta pushes its tests to (default: reflecta/auto-tests).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=(
+            "Run the loop and print the pull request that WOULD be opened "
+            "(branch, commit, title, body) without committing, pushing, or "
+            "calling GitHub. No GITHUB_TOKEN required."
+        ),
+    ),
+    max_iters: Optional[int] = typer.Option(None, help="Max targets to attempt."),
+    target_coverage: Optional[float] = typer.Option(
+        None, help="Stop once total coverage reaches this percent."
+    ),
+    mutation: Optional[bool] = typer.Option(
+        None, "--mutation/--no-mutation", help="Enable the mutation (honesty) gate."
+    ),
+    min_mutation_score: Optional[float] = typer.Option(
+        None, help="Min mutant-kill fraction a kept test must reach (with --mutation)."
+    ),
+    max_mutants: Optional[int] = typer.Option(
+        None, help="Cap on mutants generated per target (with --mutation)."
+    ),
+    attempt_risky: Optional[bool] = typer.Option(
+        None, "--attempt-risky/--no-attempt-risky", help="Also attempt risky targets."
+    ),
+    escalate: bool = typer.Option(
+        False, "--escalate", help="Escalate stuck targets to Claude after repair."
+    ),
+    python: Optional[str] = typer.Option(
+        None, "--python", help="Interpreter used to run generated tests."
+    ),
+    cache_dir: Optional[Path] = typer.Option(
+        None, "--cache-dir", help="Override the LLM generation cache directory."
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Log per-target decisions to stderr."
+    ),
+) -> None:
+    """Run reflecta and open a pull request containing the accepted tests.
+
+    Reads defaults from ``reflecta.toml`` (``[tool.reflecta]``) so a CI workflow
+    can stay to ``reflecta ci --path .``; explicit flags override the file. The
+    loop runs exactly as ``reflecta run``; afterwards the KEPT tests are committed
+    to ``--head`` and a PR into ``--base`` is opened (or updated if one is already
+    open). Set ``GITHUB_TOKEN`` for the PR step (not needed for ``--dry-run``).
+    """
+    from reflecta import ci as ci_mod
+    from reflecta import settings as settings_mod
+    from reflecta.forge import ForgeError
+    from reflecta.git_ops import GitError
+
+    path = path.resolve()
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s", force=True)
+    else:
+        logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
+    load_dotenv()
+
+    try:
+        cfg = settings_mod.load_settings(path)
+    except settings_mod.SettingsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+
+    def r(cli_value, key, default):
+        return settings_mod.resolve(cli_value, key, cfg, default)
+
+    # PR-step credentials are only needed on the real path; --dry-run skips them.
+    try:
+        require_credentials(escalate=escalate)
+    except EnvironmentError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+
+    ui = ReflectaUI()
+    ui.banner()
+    try:
+        report = run_loop(
+            path,
+            max_iters=r(max_iters, "max_iters", 20),
+            max_repairs=r(None, "max_repairs", 2),
+            max_llm_calls=r(None, "max_llm_calls", 50),
+            target_coverage=r(target_coverage, "target_coverage", None),
+            stall_k=r(None, "stall_k", 7),
+            escalate=escalate,
+            python_exe=r(python, "python", None),
+            skip_entrypoints=r(None, "skip_entrypoints", True),
+            attempt_risky=r(attempt_risky, "attempt_risky", False),
+            cache_dir=cache_dir,
+            mutation=r(mutation, "mutation", False),
+            min_mutation_score=r(min_mutation_score, "min_mutation_score", 0.5),
+            max_mutants=r(max_mutants, "max_mutants", 30),
+            ui=ui,
+        )
+    except (EnvironmentError, CoverageMeasurementError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+
+    report_path = path / "reflecta-report.json"
+    write_report(report, report_path)
+    ui.summary(report, report_path)
+
+    head_branch = r(head, "head_branch", ci_mod.DEFAULT_HEAD_BRANCH)
+    base_branch = r(base, "base_branch", None)
+    try:
+        result = ci_mod.submit(
+            path,
+            report,
+            head_branch=head_branch,
+            base_branch=base_branch,
+            dry_run=dry_run,
+        )
+    except (ForgeError, GitError) as exc:
+        # Both carry actionable, secret-free messages.
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+
+    if result.status == "dry_run":
+        ui.print_ci_dry_run(result.plan)
+    else:
+        ui.print_ci_result(result)
 
 
 @app.command()
