@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING
 
 from reflecta.budget import BudgetTracker
 from reflecta.coverage_report import extract_targets
-from reflecta.gates import passes_assertion_gate, passes_delta_gate
+from reflecta.gates import (
+    passes_assertion_gate,
+    passes_delta_gate,
+    passes_mutation_gate,
+)
 from reflecta.generate import collect_existing_tests, generate_test
 from reflecta.llm.groq import MODEL_FAST
 from reflecta.llm.provider import BudgetExhausted
@@ -625,6 +629,9 @@ def run_loop(
     skip_entrypoints: bool = True,
     attempt_risky: bool = False,
     cache_dir: Path | None = None,
+    mutation: bool = False,
+    min_mutation_score: float = 0.5,
+    max_mutants: int = 30,
     ui: "ReflectaUI | None" = None,
 ) -> RunReport:
     """Main orchestration loop.
@@ -1093,6 +1100,47 @@ def run_loop(
                 outcome = process_test(
                     test, coverage_before=coverage_before, coverage_after=coverage_after
                 )
+                if outcome == "kept" and mutation:
+                    # The honesty gate. The test raised coverage — but does it
+                    # actually catch bugs? Plant mutants in the target and keep
+                    # the test only if it kills enough of them. A coverage-only
+                    # test that asserts nothing meaningful is discarded here.
+                    from reflecta.mutation import score_test
+
+                    with ui.spin("Mutation") if ui else contextlib.nullcontext():
+                        mres = score_test(
+                            test,
+                            source,
+                            repo_path,
+                            interpreter,
+                            max_mutants=max_mutants,
+                        )
+                    test.mutation_score = mres.score
+                    report.mutants_killed += mres.killed
+                    report.mutants_total += mres.total
+                    if not passes_mutation_gate(mres, min_mutation_score):
+                        test.test_file_path.unlink(missing_ok=True)
+                        test.target.status = TargetStatus.DISCARDED
+                        report.tests_discarded += 1
+                        report.tests_failed_mutation += 1
+                        stall += 1
+                        iter_count += 1
+                        logger.info(
+                            "  discarded: mutation score %.0f%% < %.0f%% "
+                            "(%d/%d mutants killed, %d survived)",
+                            mres.score * 100,
+                            min_mutation_score * 100,
+                            mres.killed,
+                            mres.total,
+                            len(mres.survivors),
+                        )
+                        if ui:
+                            ui.print_mutation_failed(mres, min_mutation_score)
+                        continue
+                    report.tests_mutation_tested += 1
+                    if ui:
+                        ui.print_mutation_passed(mres)
+
                 if outcome == "kept":
                     logger.info(
                         "  kept %s (coverage %.2f -> %.2f)",

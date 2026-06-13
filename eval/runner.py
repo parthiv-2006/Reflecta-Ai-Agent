@@ -61,9 +61,7 @@ def run_fixture(
     """
     fixture_dir = _fixtures_dir() / fixture_name
     if not fixture_dir.is_dir():
-        raise FileNotFoundError(
-            f"Fixture '{fixture_name}' not found at {fixture_dir}"
-        )
+        raise FileNotFoundError(f"Fixture '{fixture_name}' not found at {fixture_dir}")
 
     python_exe = python or sys.executable
     tmp_root = Path(tempfile.mkdtemp(prefix=f"reflecta_eval_{fixture_name}_"))
@@ -73,7 +71,9 @@ def run_fixture(
             fixture_dir,
             tmp_fixture,
             ignore=shutil.ignore_patterns(
-                "__pycache__", "*.pyc", ".pytest_cache",
+                "__pycache__",
+                "*.pyc",
+                ".pytest_cache",
                 "coverage_baseline.json",  # do not carry the committed baseline
             ),
         )
@@ -104,7 +104,9 @@ def run_fixture(
         env = os.environ.copy()
         existing_pp = env.get("PYTHONPATH", "")
         repo_str = str(_REPO_ROOT)
-        env["PYTHONPATH"] = f"{repo_str}{os.pathsep}{existing_pp}" if existing_pp else repo_str
+        env["PYTHONPATH"] = (
+            f"{repo_str}{os.pathsep}{existing_pp}" if existing_pp else repo_str
+        )
 
         proc = subprocess.run(
             cmd,
@@ -163,7 +165,9 @@ def _metrics_from_report(
     targets = data.get("targets", [])
 
     targets_attempted = sum(
-        1 for t in targets if t.get("status") in ("kept", "discarded", "failed", "escalated")
+        1
+        for t in targets
+        if t.get("status") in ("kept", "discarded", "failed", "escalated")
     )
     tests_accepted = data.get("tests_kept", 0)
     tests_discarded = data.get("tests_discarded", 0)
@@ -180,7 +184,9 @@ def _metrics_from_report(
         if t.get("status") == "skipped" and t.get("testability") == "risky"
     )
     skipped_entrypoint = sum(
-        1 for t in targets if t.get("status") == "skipped" and t.get("is_entrypoint", False)
+        1
+        for t in targets
+        if t.get("status") == "skipped" and t.get("is_entrypoint", False)
     )
 
     coverage_before = data.get("coverage_before", 0.0)

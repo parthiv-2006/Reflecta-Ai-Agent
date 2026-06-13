@@ -260,9 +260,13 @@ each user bringing their own. Architecture + rationale:
 - [x] `all_skipped` runner fix: pytest exit 0 with zero passing tests is a repairable failure, not a pass. Commit: `140b894`.
 - [x] Task 19f real-repo numbers: **Weave/python-service 64.0% → 80.4% (+16.4 pp)**, 3 kept files / 18 tests, reflecta suite 278 passing.
 
+## Session status 2026-06-13 — mutation (honesty) gate
+
+- [x] **Mutation testing gate (gate 3).** New `src/reflecta/mutation.py` + `gates.passes_mutation_gate`. Line coverage proves a test *ran* the code; the mutation gate proves it would *fail if the code were wrong*. Plants single-operator AST mutants in the target function's span (arithmetic/comparison/boolean op swaps, `not` removal, numeric/bool constant tweaks), re-renders each via `ast.unparse`, re-runs the already-generated test against each in one reused temp copy, and keeps the test only if its kill score ≥ `--min-mutation-score` (default 0.5). Opt-in via `--mutation`; zero LLM quota (pure AST + execution); runs only on tests that already cleared gates 1+2, so cost is bounded to (kept candidates × `--max-mutants`, default 30) subprocess runs. New CLI flags `--mutation/--min-mutation-score/--max-mutants`; new `RunReport` fields `tests_mutation_tested`/`tests_failed_mutation`/`mutants_killed`/`mutants_total`; UI per-target + summary lines. Tests: `tests/test_mutation.py` (18 — engine, gate, end-to-end scoring proving a behaviour-checking test kills mutants while a coverage-padding test lets them survive, and 3 `run_loop` integration tests). **Suite: 296 passing, ruff clean.**
+
 ## v2 backlog (remaining)
 
-- [ ] Mutation testing as a stronger quality signal than line coverage.
+- [x] Mutation testing as a stronger quality signal than line coverage. **Done 2026-06-13 — see session status above.**
 - [ ] Branch-coverage targeting, not just lines.
 - [x] An eval harness: fixed targets with known gaps, measure coverage gained / accepted / rejected / repairs used on every prompt or routing change. Built in `eval/` — see Session status 2026-06-08.
 - [ ] Parallel targets via git worktrees.

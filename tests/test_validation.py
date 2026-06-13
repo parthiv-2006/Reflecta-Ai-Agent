@@ -61,11 +61,7 @@ def test_well_formed_test_is_valid():
 
 
 def test_test_class_methods_count_as_tests():
-    src = (
-        "class TestThing:\n"
-        "    def test_a(self):\n"
-        "        assert 1 == 1\n"
-    )
+    src = "class TestThing:\n    def test_a(self):\n        assert 1 == 1\n"
     ok, reason = validate_test_source(src)
     assert ok, reason
 

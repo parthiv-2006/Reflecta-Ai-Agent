@@ -1,10 +1,18 @@
 import ast
 
-from reflecta.models import GeneratedTest
+from reflecta.models import GeneratedTest, MutationResult
 
 
 def passes_delta_gate(before: float, after: float) -> bool:
     return after > before
+
+
+def passes_mutation_gate(result: MutationResult, min_score: float) -> bool:
+    """The honesty gate: a kept test must kill at least ``min_score`` of the
+    mutants planted in its target. A function with no mutable surface (total
+    == 0) scores 1.0 and passes — a test cannot be faulted for code it cannot
+    meaningfully break."""
+    return result.score >= min_score
 
 
 def _is_trivial(node: ast.Assert) -> bool:

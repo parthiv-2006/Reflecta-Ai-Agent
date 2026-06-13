@@ -143,9 +143,7 @@ def generate_test(
     # Belt-and-suspenders: confirm the resolved path stays inside _reflecta/.
     # This catches any future code path that bypasses _sanitize_module_name.
     if not test_file_path.resolve().is_relative_to(reflecta_dir.resolve()):
-        raise ValueError(
-            f"Generated test path escapes _reflecta/: {test_file_path}"
-        )
+        raise ValueError(f"Generated test path escapes _reflecta/: {test_file_path}")
 
     reflecta_dir.mkdir(parents=True, exist_ok=True)
     # encoding="utf-8" is required: generated tests routinely contain non-ASCII

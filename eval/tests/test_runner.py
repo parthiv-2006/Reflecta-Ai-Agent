@@ -13,6 +13,7 @@ from eval.runner import _infer_stop_reason, _metrics_from_report, run_fixture
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+
 def _make_report(
     *,
     coverage_before: float = 50.0,
@@ -162,7 +163,9 @@ def test_run_fixture_reads_report_json(tmp_path):
     # Patch _fixtures_dir to point to our tmp_path fixtures
     import eval.runner as runner_mod
 
-    with patch.object(runner_mod, "_fixtures_dir", return_value=tmp_path / "eval" / "fixtures"):
+    with patch.object(
+        runner_mod, "_fixtures_dir", return_value=tmp_path / "eval" / "fixtures"
+    ):
         with patch("subprocess.run", side_effect=fake_run):
             m = run_fixture(fixture_name)
 
@@ -199,7 +202,9 @@ def test_run_fixture_cleans_up_on_no_report(tmp_path):
 
     import eval.runner as runner_mod
 
-    with patch.object(runner_mod, "_fixtures_dir", return_value=tmp_path / "eval" / "fixtures"):
+    with patch.object(
+        runner_mod, "_fixtures_dir", return_value=tmp_path / "eval" / "fixtures"
+    ):
         with patch("subprocess.run", side_effect=fake_run_no_report):
             m = run_fixture(fixture_name)
 

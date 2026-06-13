@@ -89,7 +89,9 @@ def run(
         typer.echo(f"\nRunning fixture: {name} …")
         cache_dir = _RECORDINGS_DIR / name
         try:
-            metrics = run_fixture(name, cache_dir=cache_dir, python=python, verbose=verbose)
+            metrics = run_fixture(
+                name, cache_dir=cache_dir, python=python, verbose=verbose
+            )
         except Exception as exc:
             typer.echo(f"  [{name}] ERROR: {exc}", err=True)
             any_failed = True
@@ -169,17 +171,13 @@ def update_baseline(
         typer.echo(f"  [{name}] captured: {metrics}")
 
     _BASELINES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _BASELINES_PATH.write_text(
-        json.dumps(existing, indent=2), encoding="utf-8"
-    )
+    _BASELINES_PATH.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     typer.echo(f"\nBaseline written to {_BASELINES_PATH}")
 
 
 @eval_app.command()
 def cache(
-    fixture: str = typer.Option(
-        None, "--fixture", help="Cache a single fixture only."
-    ),
+    fixture: str = typer.Option(None, "--fixture", help="Cache a single fixture only."),
 ) -> None:
     """Run live and populate eval/recordings/ cache.  Subsequent runs are quota-free."""
     from eval.runner import run_fixture
@@ -200,6 +198,8 @@ def cache(
         typer.echo(f"\nWarming cache for: {name} …")
         try:
             metrics = run_fixture(name, cache_dir=cache_dir, verbose=True)
-            typer.echo(f"  [{name}] done — {metrics.stop_reason}, {metrics.tests_accepted} accepted")
+            typer.echo(
+                f"  [{name}] done — {metrics.stop_reason}, {metrics.tests_accepted} accepted"
+            )
         except Exception as exc:
             typer.echo(f"  [{name}] ERROR: {exc}", err=True)

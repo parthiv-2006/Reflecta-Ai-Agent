@@ -33,7 +33,6 @@ def strip_fences(text: str) -> str:
     return text.strip()
 
 
-
 class RateLimitError(Exception):
     """Raised by provider clients when the API returns 429.
 
@@ -124,7 +123,10 @@ def explain_rate_limit(message: str) -> str:
             "This is a DAILY quota cap. It resets at midnight Pacific (Google) "
             "or 24h after first use (Groq) — retry later today/tomorrow."
         )
-    if any(k in low for k in ("per minute", "per-minute", "rpm", "tpm", "tokens per minute")):
+    if any(
+        k in low
+        for k in ("per minute", "per-minute", "rpm", "tpm", "tokens per minute")
+    ):
         return "This is a PER-MINUTE rate limit. Wait ~60 seconds and re-run."
     return (
         "Free tiers cap both per-minute and per-day usage. Wait ~60s and re-run; "

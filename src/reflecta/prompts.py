@@ -76,4 +76,3 @@ def build_generation_prompt(
         f"Target to cover: `{qualified_name}`\n"
         f"Missing line numbers: {missing_lines}\n"
     )
-

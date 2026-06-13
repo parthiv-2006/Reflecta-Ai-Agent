@@ -332,7 +332,9 @@ def test_extract_relevant_source_trims_large_files():
 
     large_source = "import os\n" * 10
     large_source += "#\n" * 150
-    large_source += "class Calculator:\n    def add(self, a, b):\n        return a + b\n"
+    large_source += (
+        "class Calculator:\n    def add(self, a, b):\n        return a + b\n"
+    )
     large_source += "    def sub(self, a, b):\n        return a - b\n"
 
     extracted = extract_relevant_source(large_source, "Calculator.add", max_chars=400)
@@ -340,5 +342,3 @@ def test_extract_relevant_source_trims_large_files():
     assert "def add(self, a, b):" in extracted
     assert "return a + b" in extracted
     assert "def sub" not in extracted
-
-

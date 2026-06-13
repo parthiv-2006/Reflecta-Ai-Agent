@@ -30,7 +30,7 @@ Point Reflecta at any Python repository and it:
 3. **Generates** targeted pytest files through a routing chain: disk cache (SHA-256 key, 7-day TTL, zero quota) → Gemini Flash (1M-token context holds a full module + existing tests) → Claude Haiku overflow (when Gemini's 250 RPD daily cap is hit, capped at 20 calls/run).
 4. **Runs** each generated test in an isolated subprocess with a hard timeout; captures tracebacks on failure.
 5. **Repairs** failing tests through a Groq Llama loop (8B first, 70B for harder failures) up to a configurable ceiling. Targets that survive neither path can be escalated to Claude Sonnet with real tool-use (`--escalate`).
-6. **Gates** every kept test on two strict checks: real AST-verified assertions + a strictly positive coverage delta.
+6. **Gates** every kept test on two strict checks: real AST-verified assertions + a strictly positive coverage delta. With `--mutation`, applies an optional third gate — a mutation score check that verifies the test would actually *fail* if the code were wrong.
 7. **Reports** before/after coverage, kept/discarded/repaired counts, LLM call breakdown by provider, and a machine-readable JSON report.
 
 ---
@@ -50,6 +50,7 @@ Point Reflecta at any Python repository and it:
 | **All-or-nothing drafts** | A draft with 3 passing tests and 1 unfixable failure used to be deleted wholesale — most of the value thrown away | Salvage pass: at repair exhaustion, the failing test functions (named in pytest's FAILED/ERROR summary) are AST-stripped by line span; the passing remainder re-runs and faces the same two gates |
 | **Silently-skipped async tests** | Bare `async def test_*` is skipped (exit 0) when the target repo lacks pytest-asyncio config — coverage never moves, quota burns | Generation prompts require synchronous tests that drive async targets via `asyncio.run()` |
 | **Broken target tooling** | A target venv without `coverage` makes every measurement read 0.0% — the run sees zero targets and exits "successfully" | Tooling preflight checks `coverage`+`pytest` under the target interpreter and pip-installs them into the venv; measurement failures raise with the captured stderr instead of returning 0.0 |
+| **Coverage-padding tests** | A test that imports the module and runs its code passes the coverage-delta gate but asserts nothing meaningful — it would never catch a bug | Opt-in mutation gate (`--mutation`): plants single-operator AST mutants in the target function and re-runs the test against each; discards the test if its kill rate is below `--min-mutation-score` (default 0.5). Zero LLM quota; runs only on tests that already passed gates 1 and 2 |
 
 ---
 
@@ -96,9 +97,9 @@ graph TD
 
 ---
 
-## The two gates — what keeps Reflecta honest
+## The gates — what keeps Reflecta honest
 
-> **Every test Reflecta keeps must clear both gates. Passing one is not enough.**
+> **Every test Reflecta keeps must clear gates 1 and 2. Gate 3 is an optional, zero-quota honesty check that runs only after the first two pass.**
 
 **Gate 1 — AST Assertion Validator** ([`src/reflecta/gates.py`](src/reflecta/gates.py))
 Parses the generated file's AST before running it. Rejects immediately if:
@@ -108,6 +109,11 @@ Parses the generated file's AST before running it. Rejects immediately if:
 
 **Gate 2 — Coverage-Delta Check** ([`src/reflecta/gates.py`](src/reflecta/gates.py))
 After a test passes, re-runs `coverage json` and compares totals. Discards and deletes the test file if total project coverage did not strictly increase. A passing test that only imports the module gets caught here.
+
+**Gate 3 — Mutation Score (optional, `--mutation`)** ([`src/reflecta/mutation.py`](src/reflecta/mutation.py), [`src/reflecta/gates.py`](src/reflecta/gates.py))
+Line coverage proves a test *executed* the code; it does not prove the test would *fail if the code were wrong*. Gate 3 plants single-operator mutants inside the target function's line span — arithmetic op swaps (`+`↔`-`, `*`↔`/`), comparison swaps (`<`↔`>=`, `==`↔`!=`), boolean op swaps (`and`↔`or`), `not` removal, and constant tweaks (`n`→`n+1`, `True`↔`False`). Each mutant is produced by transforming one AST node and re-rendering with `ast.unparse`; no-op mutants (text identical to original) are dropped. The test is re-run against each mutant in an isolated temp copy of the repo; a mutant is **killed** if the test now fails. The test is kept only if `killed / total ≥ --min-mutation-score` (default `0.5`). A function with no mutable surface scores 1.0 and always passes.
+
+Cost is bounded to `(kept candidates × --max-mutants)` subprocess runs. No provider calls, no LLM quota. The real working tree is never modified.
 
 ---
 
@@ -199,6 +205,9 @@ Generated tests are written to `tests/_reflecta/` inside the target repo. Human-
 | `--python` | auto | Interpreter for running generated tests. Auto-detects the target repo's `.venv`/`venv`/`env`; falls back to Reflecta's own interpreter |
 | `--skip-entrypoints` / `--no-skip-entrypoints` | on | Skip `main` and functions under `if __name__ == "__main__"` — they aren't unit-testable. Use `--no-skip-entrypoints` to attempt them anyway |
 | `--attempt-risky` | off | Also attempt "risky" targets (functions that directly call network/DB/browser/subprocess APIs). Off by default — the free models rarely repair these |
+| `--mutation` | off | Enable the opt-in mutation gate: discard kept tests whose mutation score is below `--min-mutation-score`. Zero LLM quota |
+| `--min-mutation-score` | `0.5` | Minimum fraction of mutants a test must kill to pass gate 3 (range 0.0–1.0) |
+| `--max-mutants` | `30` | Maximum mutants to generate and test per kept candidate |
 | `--dry-run` | off | Preview what would be attempted vs skipped (static triage + import preflight) without calling any LLM |
 | `--cache-dir` | auto | Override the generation cache directory (default: `{repo}/.reflecta/gen_cache/`) |
 
@@ -337,7 +346,6 @@ The eval harness under `eval/` runs against fixed fixtures with committed LLM re
 
 ## Roadmap
 
-- **Mutation testing** — Replace line-coverage delta with a mutation score to catch tests that cover lines but don't verify behavior.
 - **Branch-coverage targeting** — Parse missing branch nodes from `coverage json` to target specific code paths, not just uncovered lines.
 - **CI/CD integration** — Run as a GitHub Action; open a pull request with accepted tests automatically.
 - **Parallel targets** — Process independent targets concurrently via git worktrees.

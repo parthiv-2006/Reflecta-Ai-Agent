@@ -94,9 +94,7 @@ def generate(prompt: str, *, client=None) -> str:
                 provider="Claude Haiku (generation overflow)",
             )
         if resp.status_code != 200:
-            raise RuntimeError(
-                f"Claude API {resp.status_code}: {resp.text[:300]}"
-            )
+            raise RuntimeError(f"Claude API {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
         blocks = data.get("content", [])
         for block in blocks:

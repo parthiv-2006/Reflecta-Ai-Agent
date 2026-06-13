@@ -39,7 +39,9 @@ def test_happy_path_two_targets_both_kept(tmp_path):
 
     targets = [_target("func_a"), _target("func_b")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+    def fake_generate(
+        target, source, existing, *, repo_path, gemini_client=None, **kwargs
+    ):
         return _gen_test(target, tmp_path)
 
     def fake_run_test(test_file, repo_path, timeout_s=30, **kwargs):
@@ -76,7 +78,9 @@ def test_happy_path_max_iters_stops_early(tmp_path):
 
     targets = [_target("func_a"), _target("func_b"), _target("func_c")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+    def fake_generate(
+        target, source, existing, *, repo_path, gemini_client=None, **kwargs
+    ):
         return _gen_test(target, tmp_path)
 
     def fake_run_test(test_file, repo_path, timeout_s=30, **kwargs):
@@ -106,7 +110,9 @@ def test_happy_path_assertion_gate_discards(tmp_path):
 
     targets = [_target("func_a")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+    def fake_generate(
+        target, source, existing, *, repo_path, gemini_client=None, **kwargs
+    ):
         p = tmp_path / "test_bad.py"
         p.write_text("def test_x(): pass\n")  # no assertions → gate rejects
         return GeneratedTest(
@@ -140,7 +146,9 @@ def test_happy_path_run_fails_marks_failed(tmp_path):
 
     targets = [_target("func_a")]
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+    def fake_generate(
+        target, source, existing, *, repo_path, gemini_client=None, **kwargs
+    ):
         return _gen_test(target, tmp_path)
 
     def fake_run_test(test_file, repo_path, timeout_s=30, **kwargs):
@@ -175,7 +183,9 @@ def test_failed_repair_deletes_generated_test_file(tmp_path):
     targets = [_target("func_a")]
     generated: list[Path] = []
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+    def fake_generate(
+        target, source, existing, *, repo_path, gemini_client=None, **kwargs
+    ):
         t = _gen_test(target, tmp_path)
         generated.append(t.test_file_path)
         return t

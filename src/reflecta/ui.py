@@ -4,6 +4,7 @@ All display logic lives here so loop.py stays free of formatting concerns.
 Pass ``ui=None`` (the default) anywhere a ReflectaUI is expected to silence
 all output — existing tests do this automatically.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -235,6 +236,20 @@ class ReflectaUI:
             f" [dim]Claude Sonnet ({max_iters} iter{'s' if max_iters != 1 else ''} max)…[/]"
         )
 
+    def print_mutation_passed(self, result) -> None:
+        self._c.print(
+            f"        [dim]{'Mutation gate':<{_COL}}[/] {_OK}"
+            f"  [green]killed {result.killed}/{result.total}"
+            f"  ({result.score * 100:.0f}%)[/]"
+        )
+
+    def print_mutation_failed(self, result, min_score: float) -> None:
+        self._c.print(
+            f"        [dim]{'Mutation gate':<{_COL}}[/] {_FAIL}"
+            f"  [dim]killed {result.killed}/{result.total} "
+            f"({result.score * 100:.0f}%) < {min_score * 100:.0f}% — DISCARDED[/]"
+        )
+
     def print_target_kept(self, before: float, after: float) -> None:
         delta = after - before
         self._c.print(
@@ -275,6 +290,18 @@ class ReflectaUI:
             f"{skipped_part}"
             f"  [dim]·[/]  repairs {report.repair_attempts_used}"
         )
+        if getattr(report, "mutants_total", 0) or getattr(
+            report, "tests_failed_mutation", 0
+        ):
+            killed = report.mutants_killed
+            total = report.mutants_total
+            pct = f"{killed / total * 100:.0f}%" if total else "n/a"
+            self._c.print(
+                f"  [bold]Mutation[/]     "
+                f"killed [green]{killed}/{total}[/] ({pct})"
+                f"  [dim]·[/]  passed gate {report.tests_mutation_tested}"
+                f"  [dim]·[/]  failed gate {report.tests_failed_mutation}"
+            )
         if report.escalations_attempted:
             self._c.print(
                 f"  [bold]Escalations[/]  "
