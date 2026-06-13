@@ -44,10 +44,7 @@ def test_function_using_supabase_is_risky():
 
 def test_param_injected_client_is_not_flagged():
     # Dependency injection: session is a parameter, not an import. Testable.
-    src = (
-        "def fetch(session, url):\n"
-        "    return session.get(url).json()\n"
-    )
+    src = "def fetch(session, url):\n    return session.get(url).json()\n"
     assert classify_target(src, "fetch").level == TESTABLE
 
 
@@ -103,17 +100,11 @@ def test_async_network_function_is_risky():
 
 def test_file_write_is_risky_but_read_is_not():
     write_src = (
-        "def dump(path, data):\n"
-        "    with open(path, 'w') as f:\n"
-        "        f.write(data)\n"
+        "def dump(path, data):\n    with open(path, 'w') as f:\n        f.write(data)\n"
     )
     assert classify_target(write_src, "dump").level == RISKY
 
-    read_src = (
-        "def load(path):\n"
-        "    with open(path) as f:\n"
-        "        return f.read()\n"
-    )
+    read_src = "def load(path):\n    with open(path) as f:\n        return f.read()\n"
     assert classify_target(read_src, "load").level == TESTABLE
 
 

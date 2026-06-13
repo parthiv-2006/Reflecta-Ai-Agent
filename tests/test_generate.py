@@ -150,9 +150,7 @@ def test_regenerates_once_when_first_draft_is_broken(monkeypatch, tmp_path):
     monkeypatch.setattr("reflecta.llm.router.generate", mock_generate)
 
     target = _make_target(tmp_path / "calc.py", [2])
-    result = generate_test(
-        target, "def helper(): ...", "", repo_path=tmp_path
-    )
+    result = generate_test(target, "def helper(): ...", "", repo_path=tmp_path)
 
     assert len(prompts) == 2
     assert result.generation_calls == 2
@@ -189,9 +187,7 @@ def test_generated_file_written_as_utf8(monkeypatch, tmp_path):
         "    # café — naïve — 你好 — ‘smart quotes’\n"
         "    assert add(1, 2) == 3\n"
     )
-    monkeypatch.setattr(
-        "reflecta.llm.router.generate", lambda *a, **kw: non_ascii
-    )
+    monkeypatch.setattr("reflecta.llm.router.generate", lambda *a, **kw: non_ascii)
     target = _make_target(tmp_path / "calc.py", [2])
     result = generate_test(
         target, "def add(a, b): return a + b", "", repo_path=tmp_path
@@ -285,6 +281,7 @@ def test_generate_test_path_traversal_blocked(monkeypatch, tmp_path):
     )
     # Monkeypatch the stem to simulate a crafted coverage.json entry
     import reflecta.generate as gen_module
+
     original_sanitize = gen_module._sanitize_module_name
 
     call_count = {"n": 0}

@@ -32,9 +32,7 @@ def _verdict(name: str, actual: float, spec: dict, passed: bool) -> str:
     return f"{name}={actual} {icon}"
 
 
-def compare_to_baseline(
-    metrics: EvalMetrics, baseline: dict
-) -> list[MetricResult]:
+def compare_to_baseline(metrics: EvalMetrics, baseline: dict) -> list[MetricResult]:
     """Compare metrics against a baseline spec dict.
 
     Parameters

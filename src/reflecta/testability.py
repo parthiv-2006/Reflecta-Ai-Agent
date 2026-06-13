@@ -213,7 +213,9 @@ def _walk(node: ast.AST):
         yield from _walk(child)
 
 
-def _module_import_hazards(tree: ast.Module, aliases: dict[str, str]) -> tuple[str, str]:
+def _module_import_hazards(
+    tree: ast.Module, aliases: dict[str, str]
+) -> tuple[str, str]:
     """Inspect module import-time code for things that make ``import`` unsafe.
 
     Returns (category, reason) for the first hazard found, else ("", "").
@@ -265,7 +267,10 @@ def _find_function(tree: ast.Module, qualified_name: str):
             for ln in range(node.lineno, (node.end_lineno or node.lineno) + 1):
                 class_map[ln] = node.name
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == name
+        ):
             cls = class_map.get(node.lineno, "")
             qual = f"{cls}.{node.name}" if cls else node.name
             if qual == qualified_name or node.name == qualified_name:

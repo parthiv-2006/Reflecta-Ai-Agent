@@ -128,7 +128,9 @@ def test_broken_target_marked_failed_loop_continues(tmp_path):
     gen_b = _test_with_assertions(targets[1], tmp_path)
     coverage_seq = iter([50.0, 60.0])
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+    def fake_generate(
+        target, source, existing, *, repo_path, gemini_client=None, **kwargs
+    ):
         if target.qualified_name == "broken_func":
             raise ImportError("cannot import module: SyntaxError in target file")
         return gen_b
@@ -164,7 +166,9 @@ def test_hanging_test_enters_repair_path(tmp_path):
     gen = _test_with_assertions(targets[0], tmp_path)
     repair_calls = {"n": 0}
 
-    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs):
+    def fake_repair(
+        test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs
+    ):
         repair_calls["n"] += 1
         assert result.traceback == "timeout"
         return (None, [RepairAttempt(1, "timeout", "groq-fast", RepairResult.FAIL)])
@@ -219,7 +223,9 @@ def test_invalid_python_from_gemini_enters_repair_path(tmp_path):
 
     repair_calls = {"n": 0}
 
-    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs):
+    def fake_repair(
+        test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs
+    ):
         repair_calls["n"] += 1
         return (
             None,

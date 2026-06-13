@@ -109,6 +109,7 @@ def test_timeout_kills_process(tmp_path):
 def test_child_env_injects_pythonpath(tmp_path):
     """child_env(repo_path) must inject PYTHONPATH with candidate source directories."""
     from reflecta.runner import child_env
+
     # Create candidate source directories in the temp repo
     (tmp_path / "scripts").mkdir()
     (tmp_path / "scripts" / "foo.py").write_text("pass\n")
@@ -131,6 +132,7 @@ def test_child_env_injects_pythonpath(tmp_path):
 def test_strip_fences_handles_conversational_filler():
     """strip_fences must extract Python code block even when surrounded by conversational filler."""
     from reflecta.llm.provider import strip_fences
+
     response = (
         "Here is the code you requested:\n"
         "```python\n"
@@ -182,6 +184,7 @@ def test_real_assertion_failure_is_test_failure(tmp_path):
 def test_run_test_isolated_ignores_heavy_dirs(tmp_path):
     """run_test_isolated must ignore node_modules, build, dist, and .omc during copy."""
     from reflecta.runner import run_test_isolated
+
     test_file = tmp_path / "tests" / "_reflecta" / "test_ok.py"
     test_file.parent.mkdir(parents=True, exist_ok=True)
     test_file.write_text("def test_ok(): assert True")
@@ -200,13 +203,14 @@ def test_run_test_isolated_ignores_heavy_dirs(tmp_path):
     ignore_func = mock_copytree.call_args.kwargs.get("ignore")
     assert ignore_func is not None
 
-    ignored_names = ignore_func("dummy_dir", ["node_modules", "build", "dist", ".omc", "src"])
+    ignored_names = ignore_func(
+        "dummy_dir", ["node_modules", "build", "dist", ".omc", "src"]
+    )
     assert "node_modules" in ignored_names
     assert "build" in ignored_names
     assert "dist" in ignored_names
     assert ".omc" in ignored_names
     assert "src" not in ignored_names
-
 
 
 def test_exit_zero_with_all_tests_skipped_is_not_a_pass(tmp_path):

@@ -85,17 +85,20 @@ def _budget_repair_prompt(
         source_part = source_part[: len(source_part) // 2]
         prompt = build_repair_prompt(source_part, test_part, tb_part)
     while estimate_tokens(prompt) > token_budget and len(tb_part) > 200:
-        tb_part = tb_part[-(len(tb_part) // 2):]
+        tb_part = tb_part[-(len(tb_part) // 2) :]
         prompt = build_repair_prompt(source_part, test_part, tb_part)
     return prompt
 
 
-def extract_relevant_source(source: str, qualified_name: str, max_chars: int = 15000) -> str:
+def extract_relevant_source(
+    source: str, qualified_name: str, max_chars: int = 15000
+) -> str:
     """Extract relevant parts of source code to prevent exceeding Groq payload limits."""
     if len(source) <= max_chars:
         return source
 
     import ast
+
     try:
         tree = ast.parse(source)
         lines = source.splitlines()
@@ -118,7 +121,11 @@ def extract_relevant_source(source: str, qualified_name: str, max_chars: int = 1
                     break
 
         top_lines = lines[:100]
-        relevant = "\n".join(top_lines) + "\n\n... [truncated for context size] ...\n\n" + "\n".join(target_lines)
+        relevant = (
+            "\n".join(top_lines)
+            + "\n\n... [truncated for context size] ...\n\n"
+            + "\n".join(target_lines)
+        )
         if len(relevant) > max_chars:
             return relevant[:max_chars]
         return relevant

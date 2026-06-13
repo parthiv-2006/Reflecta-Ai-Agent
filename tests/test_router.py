@@ -68,7 +68,11 @@ def test_claude_overflow_cap_respected(monkeypatch, tmp_path):
     """After MAX_OVERFLOW Claude calls the router raises BudgetExhausted."""
     from reflecta.llm import router, claude_generate
 
-    monkeypatch.setattr(router.gemini, "generate", lambda *a, **kw: (_ for _ in ()).throw(BudgetExhausted("Gemini exhausted")))
+    monkeypatch.setattr(
+        router.gemini,
+        "generate",
+        lambda *a, **kw: (_ for _ in ()).throw(BudgetExhausted("Gemini exhausted")),
+    )
 
     claude_call_count = {"n": 0}
 

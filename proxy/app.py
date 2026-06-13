@@ -206,9 +206,12 @@ def create_app(config: ProxyConfig | None = None) -> FastAPI:
             # API key or full request details in their repr.  Log server-side
             # only (operator can see it); return a generic message to the caller.
             import logging as _logging
+
             _logging.getLogger("reflecta.proxy").warning(
                 "provider error for task=%s model=%s: %s",
-                body.task, body.model, exc,
+                body.task,
+                body.model,
+                exc,
             )
             raise HTTPException(status_code=502, detail="upstream provider error")
 

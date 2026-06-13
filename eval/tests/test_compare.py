@@ -129,8 +129,12 @@ def test_min_max_fails_above_range():
 def test_min_max_passes_at_boundaries():
     m_lo = _make_metrics(llm_calls_gemini=1)
     m_hi = _make_metrics(llm_calls_gemini=6)
-    assert compare_to_baseline(m_lo, {"llm_calls_gemini": {"min": 1, "max": 6}})[0].passed
-    assert compare_to_baseline(m_hi, {"llm_calls_gemini": {"min": 1, "max": 6}})[0].passed
+    assert compare_to_baseline(m_lo, {"llm_calls_gemini": {"min": 1, "max": 6}})[
+        0
+    ].passed
+    assert compare_to_baseline(m_hi, {"llm_calls_gemini": {"min": 1, "max": 6}})[
+        0
+    ].passed
 
 
 # ── multiple metrics ──────────────────────────────────────────────────────────

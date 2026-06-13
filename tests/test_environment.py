@@ -37,11 +37,11 @@ def test_collect_third_party_roots_excludes_stdlib_and_local(tmp_path):
 
     src = tmp_path / "mod.py"
     src.write_text(
-        "import os\n"            # stdlib → excluded
-        "import requests\n"      # third-party → kept
+        "import os\n"  # stdlib → excluded
+        "import requests\n"  # third-party → kept
         "from bs4 import BeautifulSoup\n"  # third-party → kept
-        "import mypkg\n"         # local package → excluded
-        "import helper\n"        # local module → excluded
+        "import mypkg\n"  # local package → excluded
+        "import helper\n"  # local module → excluded
         "from . import sibling\n"  # relative → excluded
     )
 
@@ -55,9 +55,7 @@ def test_collect_third_party_roots_excludes_stdlib_and_local(tmp_path):
 
 
 def test_preflight_reports_missing_module():
-    missing = preflight_imports(
-        sys.executable, {"this_pkg_does_not_exist_zzz", "sys"}
-    )
+    missing = preflight_imports(sys.executable, {"this_pkg_does_not_exist_zzz", "sys"})
     assert "this_pkg_does_not_exist_zzz" in missing
     assert "sys" not in missing  # sys is always importable
 

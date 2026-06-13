@@ -63,6 +63,7 @@ def _make_failing_result(name: str = "tests_accepted") -> MetricResult:
 
 # ── helpers for patching ──────────────────────────────────────────────────────
 
+
 def _baseline_ctx(fixture_names: list[str], baseline_data: dict):
     """Context managers to mock baseline loading and fixture directory listing."""
     import eval.cli as cli_mod
@@ -87,7 +88,10 @@ def _baseline_ctx(fixture_names: list[str], baseline_data: dict):
 def test_eval_run_all_pass_exits_0(tmp_path):
     """eval run exits 0 when all metrics pass."""
     metrics = _make_metrics()
-    results = [_make_passing_result("tests_accepted"), _make_passing_result("coverage_delta")]
+    results = [
+        _make_passing_result("tests_accepted"),
+        _make_passing_result("coverage_delta"),
+    ]
 
     import eval.cli as cli_mod
 
@@ -102,7 +106,9 @@ def test_eval_run_all_pass_exits_0(tmp_path):
         with patch.object(cli_mod, "_fixture_names", return_value=["calc"]):
             with patch.object(cli_mod, "_RECORDINGS_DIR", fake_recordings_dir):
                 with patch("eval.runner.run_fixture", return_value=metrics):
-                    with patch("eval.compare.compare_to_baseline", return_value=results):
+                    with patch(
+                        "eval.compare.compare_to_baseline", return_value=results
+                    ):
                         result = runner.invoke(eval_app, ["run", "--fixture", "calc"])
 
     assert result.exit_code == 0
@@ -127,7 +133,9 @@ def test_eval_run_failure_exits_1(tmp_path):
         with patch.object(cli_mod, "_fixture_names", return_value=["calc"]):
             with patch.object(cli_mod, "_RECORDINGS_DIR", fake_recordings_dir):
                 with patch("eval.runner.run_fixture", return_value=metrics):
-                    with patch("eval.compare.compare_to_baseline", return_value=results):
+                    with patch(
+                        "eval.compare.compare_to_baseline", return_value=results
+                    ):
                         result = runner.invoke(eval_app, ["run", "--fixture", "calc"])
 
     assert result.exit_code == 1
@@ -152,7 +160,9 @@ def test_eval_run_output_contains_fixture_name(tmp_path):
         with patch.object(cli_mod, "_fixture_names", return_value=["calc"]):
             with patch.object(cli_mod, "_RECORDINGS_DIR", fake_recordings_dir):
                 with patch("eval.runner.run_fixture", return_value=metrics):
-                    with patch("eval.compare.compare_to_baseline", return_value=results):
+                    with patch(
+                        "eval.compare.compare_to_baseline", return_value=results
+                    ):
                         result = runner.invoke(eval_app, ["run", "--fixture", "calc"])
 
     assert "calc" in result.output
@@ -195,13 +205,25 @@ def test_eval_run_output_ascii_safe(tmp_path):
 
     m = EvalMetrics(
         fixture_name="calc",
-        coverage_before=50.0, coverage_after=75.0, coverage_delta=25.0,
-        targets_attempted=1, tests_accepted=1, tests_discarded=0,
-        repair_attempts_used=0, targets_skipped_blocked=0, targets_skipped_risky=0,
-        targets_skipped_entrypoint=0, llm_calls_gemini=1, llm_calls_groq=0,
-        llm_calls_claude=0, run_time_seconds=1.0, stop_reason="exhausted",
+        coverage_before=50.0,
+        coverage_after=75.0,
+        coverage_delta=25.0,
+        targets_attempted=1,
+        tests_accepted=1,
+        tests_discarded=0,
+        repair_attempts_used=0,
+        targets_skipped_blocked=0,
+        targets_skipped_risky=0,
+        targets_skipped_entrypoint=0,
+        llm_calls_gemini=1,
+        llm_calls_groq=0,
+        llm_calls_claude=0,
+        run_time_seconds=1.0,
+        stop_reason="exhausted",
     )
-    r = MetricResult("tests_accepted", 1.0, 1.0, 0.0, True, "tests_accepted=1 >= min 1 ✓")
+    r = MetricResult(
+        "tests_accepted", 1.0, 1.0, 0.0, True, "tests_accepted=1 >= min 1 ✓"
+    )
     report = EvalReport("calc", m, [r], overall_passed=True)
     text = format_eval_report(report)
     # Must be encodable in cp1252 (Windows default console encoding)

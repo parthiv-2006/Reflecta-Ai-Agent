@@ -23,7 +23,9 @@ def child_env(repo_path: Path | None = None) -> dict[str, str]:
       • ``REFLECTA_TOKENS``               — operator's token list (proxy side)
       • ``REFLECTA_CONFIG_DIR``           — not a secret, but no test needs it
     """
-    _SCRUB_EXACT = frozenset({"REFLECTA_TOKEN", "REFLECTA_TOKENS", "REFLECTA_CONFIG_DIR"})
+    _SCRUB_EXACT = frozenset(
+        {"REFLECTA_TOKEN", "REFLECTA_TOKENS", "REFLECTA_CONFIG_DIR"}
+    )
     env = {
         k: v
         for k, v in os.environ.items()
@@ -33,6 +35,7 @@ def child_env(repo_path: Path | None = None) -> dict[str, str]:
         repo_path = Path(repo_path).resolve()
         if repo_path.exists():
             from reflecta.loop import _source_dirs
+
             sources = [str(repo_path / s) for s in _source_dirs(repo_path)]
             sources.append(str(repo_path))
             existing_pythonpath = os.environ.get("PYTHONPATH", "")
@@ -162,8 +165,6 @@ def run_test_isolated(
                 ".omc",
             ),
         )
-        return run_test(
-            tmp_repo / rel, tmp_repo, timeout_s=timeout_s, python_exe=exe
-        )
+        return run_test(tmp_repo / rel, tmp_repo, timeout_s=timeout_s, python_exe=exe)
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)

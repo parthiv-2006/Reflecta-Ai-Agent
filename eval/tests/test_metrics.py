@@ -142,7 +142,9 @@ def test_eval_report_fields():
 def test_eval_report_json_roundtrip():
     m = _make_metrics()
     r = _make_result()
-    report = EvalReport(fixture_name="calc", metrics=m, results=[r], overall_passed=True)
+    report = EvalReport(
+        fixture_name="calc", metrics=m, results=[r], overall_passed=True
+    )
     d = report.to_dict()
     report2 = EvalReport.from_dict(d)
     assert report2.fixture_name == report.fixture_name

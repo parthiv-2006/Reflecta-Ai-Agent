@@ -118,6 +118,9 @@ def validate_test_source(source: str) -> tuple[bool, str]:
     bound = _bound_names(tree)
     missing = _undefined_decorator_name(tree, bound)
     if missing is not None:
-        return False, f"decorator references undefined name {missing!r} (missing import)"
+        return (
+            False,
+            f"decorator references undefined name {missing!r} (missing import)",
+        )
 
     return True, ""

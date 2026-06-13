@@ -49,7 +49,9 @@ def test_repair_budget_exhausted_stops_loop(tmp_path):
 
     gen_iter = iter([gen_a, gen_b])
 
-    def fake_repair(test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs):
+    def fake_repair(
+        test, result, source, *, repo_path, max_repairs, groq_client=None, **kwargs
+    ):
         raise BudgetExhausted("groq daily cap hit")
 
     with (
@@ -117,7 +119,9 @@ def test_budget_tracker_stops_before_cap(tmp_path):
     targets = [_target(f"func_{i}") for i in range(5)]
     generate_calls = {"n": 0}
 
-    def fake_generate(target, source, existing, *, repo_path, gemini_client=None, **kwargs):
+    def fake_generate(
+        target, source, existing, *, repo_path, gemini_client=None, **kwargs
+    ):
         generate_calls["n"] += 1
         return _good_test(target, tmp_path)
 
