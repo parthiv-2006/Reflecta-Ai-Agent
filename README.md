@@ -263,6 +263,62 @@ reflecta logout
 
 ---
 
+## CI mode: open a pull request with the accepted tests
+
+`reflecta ci` runs the exact same loop as `reflecta run`, then commits the
+**kept** tests to a branch and opens (or updates) a pull request describing the
+run — turning Reflecta from a tool you run locally into a bot that raises
+coverage on a schedule.
+
+```bash
+# Run the loop and open a PR with the accepted tests
+reflecta ci --path .
+
+# Preview the PR it would open — runs the loop but commits/pushes/opens nothing
+reflecta ci --path . --dry-run
+```
+
+What it does, and the guarantees around it:
+
+- **Only accepted tests ship.** Every test in the PR has cleared the assertion +
+  coverage-delta gates (and the mutation gate when `--mutation` is on). Nothing
+  was committed unless coverage strictly rose.
+- **Human tests are never touched.** Only `tests/_reflecta/` is staged — a
+  human-written file can't be swept into the commit (hard rule #1).
+- **Idempotent.** A re-run pushes onto the same branch (`reflecta/auto-tests` by
+  default) and, finding the PR already open, updates it instead of opening a
+  duplicate. No tests kept → no branch, no PR.
+- **The PR body is a review aid** built from the run report: coverage
+  before → after, kept/discarded/repair counts, the aggregate mutation score,
+  and the list of newly-covered targets.
+
+Credentials: the loop needs `GEMINI_API_KEY` + `GROQ_API_KEY` as usual; the PR
+step needs `GITHUB_TOKEN` (with `pull-requests: write`) — exactly what GitHub
+Actions injects. `--dry-run` needs no `GITHUB_TOKEN`.
+
+### `reflecta.toml` (so CI stays a one-liner)
+
+Pin per-project defaults once and `reflecta ci --path .` needs no flags;
+explicit flags still override the file. See [`examples/reflecta.toml`](examples/reflecta.toml).
+
+```toml
+[tool.reflecta]
+max_iters = 25
+mutation = true
+min_mutation_score = 0.5
+base_branch = "main"
+head_branch = "reflecta/auto-tests"
+```
+
+### GitHub Action
+
+Copy [`examples/reflecta-ci.yml`](examples/reflecta-ci.yml) to
+`.github/workflows/reflecta.yml`, add `GEMINI_API_KEY` and `GROQ_API_KEY` as
+repository secrets, and Reflecta will open a coverage PR on a weekly schedule
+(or on demand via *Run workflow*).
+
+---
+
 ## Stop conditions
 
 The run halts cleanly — always writing a report — when any of these fire:
