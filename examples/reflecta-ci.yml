@@ -1,0 +1,48 @@
+# Reusable GitHub Actions workflow: run reflecta and open a PR with the tests
+# it accepts. Copy this to `.github/workflows/reflecta.yml` in YOUR repository.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   GEMINI_API_KEY   — free Google AI Studio key (test generation)
+#   GROQ_API_KEY     — free Groq key (test repair)
+# GITHUB_TOKEN is provided automatically; the `permissions` block below grants
+# it the scopes reflecta needs to push a branch and open the PR.
+#
+# Project defaults (max-iters, --mutation, base/head branch, …) live in
+# `reflecta.toml` so this workflow stays a one-liner. See examples/reflecta.toml.
+
+name: reflecta
+
+on:
+  # Weekly, plus a manual "Run workflow" button.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # push the reflecta/auto-tests branch
+  pull-requests: write # open the PR
+
+jobs:
+  reflecta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so the PR base resolves
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install reflecta and project deps
+        run: |
+          pip install reflecta
+          # Install YOUR project's deps so generated tests can import it:
+          pip install -e . || pip install -r requirements.txt || true
+
+      - name: Generate tests and open a PR
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: reflecta ci --path .
