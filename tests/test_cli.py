@@ -83,6 +83,97 @@ def test_run_forwards_budget_and_stop_options(tmp_path, monkeypatch):
     assert kwargs["stall_k"] == 4
 
 
+def test_run_reads_reflecta_toml_defaults(tmp_path, monkeypatch):
+    """reflecta.toml [tool.reflecta] defaults flow into run_loop under `run`."""
+    from reflecta.cli import app
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    (tmp_path / "reflecta.toml").write_text(
+        "[tool.reflecta]\n"
+        "max_iters = 3\n"
+        "mutation = true\n"
+        "min_mutation_score = 0.6\n"
+        "attempt_risky = true\n"
+    )
+    report = _minimal_report(tmp_path)
+
+    with patch("reflecta.cli.run_loop", return_value=report) as mock_loop:
+        runner = CliRunner()
+        result = runner.invoke(app, ["run", "--path", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    kwargs = mock_loop.call_args.kwargs
+    assert kwargs["max_iters"] == 3
+    assert kwargs["mutation"] is True
+    assert kwargs["min_mutation_score"] == 0.6
+    assert kwargs["attempt_risky"] is True
+
+
+def test_run_cli_flag_overrides_toml(tmp_path, monkeypatch):
+    """An explicit CLI flag beats a reflecta.toml value (CLI > toml > default)."""
+    from reflecta.cli import app
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    (tmp_path / "reflecta.toml").write_text("[tool.reflecta]\nmax_iters = 3\n")
+    report = _minimal_report(tmp_path)
+
+    with patch("reflecta.cli.run_loop", return_value=report) as mock_loop:
+        runner = CliRunner()
+        result = runner.invoke(
+            app, ["run", "--path", str(tmp_path), "--max-iters", "9"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert mock_loop.call_args.kwargs["max_iters"] == 9  # flag beats toml's 3
+
+
+def test_run_without_toml_uses_builtin_defaults(tmp_path, monkeypatch):
+    """No reflecta.toml + no flags → built-in defaults reach run_loop."""
+    from reflecta.cli import app
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    report = _minimal_report(tmp_path)
+
+    with patch("reflecta.cli.run_loop", return_value=report) as mock_loop:
+        runner = CliRunner()
+        result = runner.invoke(app, ["run", "--path", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    kwargs = mock_loop.call_args.kwargs
+    assert kwargs["max_iters"] == 20
+    assert kwargs["max_repairs"] == 2
+    assert kwargs["max_llm_calls"] == 50
+    assert kwargs["stall_k"] == 7
+    assert kwargs["skip_entrypoints"] is True
+    assert kwargs["attempt_risky"] is False
+    assert kwargs["mutation"] is False
+    assert kwargs["min_mutation_score"] == 0.5
+    assert kwargs["max_mutants"] == 30
+
+
+def test_run_invalid_toml_exits_with_error(tmp_path, monkeypatch):
+    """An unparseable reflecta.toml fails fast rather than silently ignoring it."""
+    from reflecta.cli import app
+    from typer.testing import CliRunner
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    (tmp_path / "reflecta.toml").write_text("this is = = not toml")
+
+    with patch("reflecta.cli.run_loop") as mock_loop:
+        runner = CliRunner()
+        result = runner.invoke(app, ["run", "--path", str(tmp_path)])
+
+    assert result.exit_code != 0
+    mock_loop.assert_not_called()
+
+
 def test_run_summary_format(tmp_path, monkeypatch):
     """Summary line shows before/after/delta, kept, discarded, repairs, stop reason."""
     from reflecta.cli import app

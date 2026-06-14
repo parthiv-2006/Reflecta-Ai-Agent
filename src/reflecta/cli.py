@@ -24,21 +24,29 @@ except ImportError:
 @app.command()
 def run(
     path: Path = typer.Option(..., help="Path to the repository to analyse."),
-    max_iters: int = typer.Option(20, help="Maximum targets to attempt per run."),
-    max_repairs: int = typer.Option(2, help="Maximum repair attempts per target."),
-    max_llm_calls: int = typer.Option(
-        50,
+    max_iters: Optional[int] = typer.Option(
+        None, help="Maximum targets to attempt per run. [default: 20]"
+    ),
+    max_repairs: Optional[int] = typer.Option(
+        None, help="Maximum repair attempts per target. [default: 2]"
+    ),
+    max_llm_calls: Optional[int] = typer.Option(
+        None,
         help=(
             "Free-tier budget: stop before exceeding this many Gemini/Groq calls. "
             "Claude escalation is a separate quota bounded by --max-claude-iters "
-            "and is NOT counted here."
+            "and is NOT counted here. [default: 50]"
         ),
     ),
-    target_coverage: float = typer.Option(
+    target_coverage: Optional[float] = typer.Option(
         None, help="Stop once total coverage reaches this percent."
     ),
-    stall_k: int = typer.Option(
-        7, help="Stop after this many consecutive targets that do not raise coverage."
+    stall_k: Optional[int] = typer.Option(
+        None,
+        help=(
+            "Stop after this many consecutive targets that do not raise coverage. "
+            "[default: 7]"
+        ),
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Log per-target decisions to stderr."
@@ -51,7 +59,7 @@ def run(
     max_claude_iters: int = typer.Option(
         3, help="Maximum Claude tool-use iterations per escalated target."
     ),
-    python: str = typer.Option(
+    python: Optional[str] = typer.Option(
         None,
         "--python",
         help=(
@@ -60,18 +68,19 @@ def run(
             "falling back to reflecta's own interpreter."
         ),
     ),
-    skip_entrypoints: bool = typer.Option(
-        True,
+    skip_entrypoints: Optional[bool] = typer.Option(
+        None,
         "--skip-entrypoints/--no-skip-entrypoints",
         help=(
             "Skip module entrypoints (main / functions under "
             "if __name__=='__main__'); they are not unit-testable and waste "
-            "budget. Pass --no-skip-entrypoints to attempt them anyway."
+            "budget. Pass --no-skip-entrypoints to attempt them anyway. "
+            "[default: skip]"
         ),
     ),
-    attempt_risky: bool = typer.Option(
-        False,
-        "--attempt-risky",
+    attempt_risky: Optional[bool] = typer.Option(
+        None,
+        "--attempt-risky/--no-attempt-risky",
         help=(
             "Also attempt 'risky' targets (functions that directly do "
             "network/DB/browser/subprocess I/O). Off by default to save LLM "
@@ -96,9 +105,9 @@ def run(
             "without spending quota."
         ),
     ),
-    mutation: bool = typer.Option(
-        False,
-        "--mutation",
+    mutation: Optional[bool] = typer.Option(
+        None,
+        "--mutation/--no-mutation",
         help=(
             "Enable the mutation (honesty) gate: after a test raises coverage, "
             "plant single-operator mutants in its target and keep the test only "
@@ -107,21 +116,28 @@ def run(
             "No LLM quota, but adds subprocess runs per kept test."
         ),
     ),
-    min_mutation_score: float = typer.Option(
-        0.5,
+    min_mutation_score: Optional[float] = typer.Option(
+        None,
         "--min-mutation-score",
         help=(
             "Minimum fraction of mutants a kept test must kill (0.0–1.0). Only "
-            "used with --mutation. A function with no mutable surface scores 1.0."
+            "used with --mutation. A function with no mutable surface scores 1.0. "
+            "[default: 0.5]"
         ),
     ),
-    max_mutants: int = typer.Option(
-        30,
+    max_mutants: Optional[int] = typer.Option(
+        None,
         "--max-mutants",
-        help="Cap on mutants generated per target under --mutation.",
+        help="Cap on mutants generated per target under --mutation. [default: 30]",
     ),
 ) -> None:
-    """Generate coverage-raising tests for the repository at PATH."""
+    """Generate coverage-raising tests for the repository at PATH.
+
+    Reads defaults from ``reflecta.toml`` (``[tool.reflecta]``) so a project can
+    pin its preferences once; explicit CLI flags always override the file.
+    """
+    from reflecta import settings as settings_mod
+
     path = path.resolve()
     if verbose:
         logging.basicConfig(level=logging.DEBUG, format="%(message)s", force=True)
@@ -130,6 +146,21 @@ def run(
         # bleed into user-facing output when a target fails unexpectedly.
         logging.basicConfig(level=logging.WARNING, format="%(message)s", force=True)
     load_dotenv()
+
+    try:
+        cfg = settings_mod.load_settings(path)
+    except settings_mod.SettingsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+
+    def r(cli_value, key, default):
+        return settings_mod.resolve(cli_value, key, cfg, default)
+
+    # Resolve every toml-overridable option once (CLI flag > reflecta.toml >
+    # built-in default) so both the --dry-run and real paths see the same values.
+    python_exe = r(python, "python", None)
+    skip_entrypoints_v = r(skip_entrypoints, "skip_entrypoints", True)
+    attempt_risky_v = r(attempt_risky, "attempt_risky", False)
 
     # --dry-run: static triage + preflight only. No LLM, so no credentials
     # required. Prints the plan and exits.
@@ -141,14 +172,14 @@ def run(
         try:
             plan = triage_repo(
                 path,
-                python_exe=python,
-                skip_entrypoints=skip_entrypoints,
-                attempt_risky=attempt_risky,
+                python_exe=python_exe,
+                skip_entrypoints=skip_entrypoints_v,
+                attempt_risky=attempt_risky_v,
             )
         except (EnvironmentError, CoverageMeasurementError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1)
-        ui.print_triage(plan, attempt_risky=attempt_risky)
+        ui.print_triage(plan, attempt_risky=attempt_risky_v)
         return
 
     try:
@@ -161,20 +192,20 @@ def run(
     try:
         report = run_loop(
             path,
-            max_iters=max_iters,
-            max_repairs=max_repairs,
-            max_llm_calls=max_llm_calls,
-            target_coverage=target_coverage,
-            stall_k=stall_k,
+            max_iters=r(max_iters, "max_iters", 20),
+            max_repairs=r(max_repairs, "max_repairs", 2),
+            max_llm_calls=r(max_llm_calls, "max_llm_calls", 50),
+            target_coverage=r(target_coverage, "target_coverage", None),
+            stall_k=r(stall_k, "stall_k", 7),
             escalate=escalate,
             max_claude_iters=max_claude_iters,
-            python_exe=python,
-            skip_entrypoints=skip_entrypoints,
-            attempt_risky=attempt_risky,
+            python_exe=python_exe,
+            skip_entrypoints=skip_entrypoints_v,
+            attempt_risky=attempt_risky_v,
             cache_dir=cache_dir,
-            mutation=mutation,
-            min_mutation_score=min_mutation_score,
-            max_mutants=max_mutants,
+            mutation=r(mutation, "mutation", False),
+            min_mutation_score=r(min_mutation_score, "min_mutation_score", 0.5),
+            max_mutants=r(max_mutants, "max_mutants", 30),
             ui=ui,
         )
     except (EnvironmentError, CoverageMeasurementError) as exc:
