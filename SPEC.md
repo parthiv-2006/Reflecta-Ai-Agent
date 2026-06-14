@@ -25,6 +25,18 @@ Developers under-test their own code because writing tests is tedious and it is 
 - No running against repositories that are not your own (free Gemini tier may train on inputs).
 - No editing or deleting human-written test files, ever.
 
+> **v2 status (kept for history — some v1 non-goals are now shipped):**
+> Two of the non-goals above have since been implemented and are **on by
+> design, opt-in by flag** — they do not change the v1 core loop, they wrap it:
+> - **Mutation testing** — the opt-in honesty gate (`--mutation`,
+>   `src/reflecta/mutation.py`). See PLAN.md "mutation gate" session.
+> - **CI/PR integration** — `reflecta ci` opens a PR of accepted tests
+>   (`src/reflecta/ci.py`, `forge.py`, `git_ops.py`, `settings.py`).
+> Still genuinely out of scope: other languages, web UI/DB/auth, and running
+> against repos that aren't your own. Branch-coverage targeting remains v2
+> backlog. The data model and CLI contracts below are the v1 baseline; the
+> current source of truth is `src/reflecta/models.py` and `--help`.
+
 ## Stack
 
 - **Language/runtime:** Python 3.11.
@@ -115,4 +127,4 @@ Stop when any of: target coverage reached; `max-iters` hit; coverage stalled acr
 - *What if no existing tests exist?* Run coverage on import of the package (everything is a gap), start from zero. Supported.
 - *Where do generated tests live?* `tests/_reflecta/test_reflecta_<module>_<n>.py`. Never anywhere else, never overwriting.
 - *What if two targets need the same test file name?* Monotonic counter per module; names never collide and never reuse.
-- *Is line coverage enough?* For v1, yes. Branch and mutation testing are v2.
+- *Is line coverage enough?* For v1, yes. Mutation testing shipped in v2 as the opt-in honesty gate (`--mutation`); branch-coverage targeting is still v2 backlog.
