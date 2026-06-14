@@ -338,8 +338,9 @@ Actions injects. `--dry-run` needs no `GITHUB_TOKEN`.
 
 ### `reflecta.toml` (so CI stays a one-liner)
 
-Pin per-project defaults once and `reflecta ci --path .` needs no flags;
-explicit flags still override the file. See [`examples/reflecta.toml`](examples/reflecta.toml).
+Pin per-project defaults once and `reflecta ci --path .` (or `reflecta run --path .`)
+needs no flags; explicit flags still override the file. Both `run` and `ci` read it
+(precedence: CLI flag > `reflecta.toml` > built-in default). See [`examples/reflecta.toml`](examples/reflecta.toml).
 
 ```toml
 [tool.reflecta]
