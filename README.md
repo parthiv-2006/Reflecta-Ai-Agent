@@ -381,8 +381,12 @@ The run halts cleanly — always writing a report — when any of these fire:
 src/reflecta/
 ├── models.py          # Canonical dataclasses: CoverageTarget, GeneratedTest, RepairAttempt, RunReport
 ├── config.py          # .env loading + API-key preflight
-├── cli.py             # Typer CLI: run / triage / clean / report / login / logout
+├── cli.py             # Typer CLI: run / ci / triage / clean / report / login / logout
 ├── loop.py            # Main orchestration loop (deterministic Python)
+├── ci.py              # reflecta ci: wrap run_loop, open a PR of accepted tests
+├── git_ops.py         # Subprocess git wrapper (branch/stage/commit/push)
+├── forge.py           # GitHub PR host over httpx (PullRequestHost protocol)
+├── settings.py        # reflecta.toml loader (run/ci defaults; CLI overrides)
 ├── coverage_report.py # coverage.json → CoverageTarget list via source AST
 ├── selection.py       # Priority ranking: easy wins (≤15 lines) first, then by missed-line count
 ├── testability.py     # Static AST triage: testable / risky / blocked (no LLM, no execution)
@@ -392,7 +396,8 @@ src/reflecta/
 ├── runner.py          # Subprocess execution + timeout + API-key scrub from env
 ├── repair.py          # Groq repair loop (8B → 70B) + prompt size budgeting
 ├── escalate.py        # Claude Sonnet tool-use loop for targets repair can't fix (opt-in --escalate)
-├── gates.py           # AST assertion gate + coverage-delta gate
+├── gates.py           # AST assertion gate + coverage-delta gate + mutation gate
+├── mutation.py        # Mutation (honesty) gate: AST mutants + kill-score scorer
 ├── budget.py          # BudgetTracker: stop before daily cap
 ├── report.py          # write/read reflecta-report.json
 ├── prompts.py         # Prompt templates (no logic)
@@ -414,7 +419,7 @@ proxy/                 # Standalone FastAPI broker for remote mode (own README +
 
 ## Testing
 
-291 tests (245 core + 46 eval harness) covering every module. Written test-first, against the same standard Reflecta enforces on generated tests.
+334 core tests (plus the eval harness) covering every module — including the mutation gate (`test_mutation.py`) and the CI/PR path (`test_git_ops.py`, `test_forge.py`, `test_ci.py`, `test_settings.py`, `test_cli_ci.py`). Written test-first, against the same standard Reflecta enforces on generated tests.
 
 ```bash
 # Run all tests
@@ -443,10 +448,12 @@ The eval harness under `eval/` runs against fixed fixtures with committed LLM re
 ## Roadmap
 
 - **Branch-coverage targeting** — Parse missing branch nodes from `coverage json` to target specific code paths, not just uncovered lines.
-- **CI/CD integration** — Run as a GitHub Action; open a pull request with accepted tests automatically.
 - **Parallel targets** — Process independent targets concurrently via git worktrees.
-- **`reflecta.toml` config** — Project-level defaults so flags don't need to be repeated on every run.
 - **Other languages** — JS/Jest, Go.
+
+> Mutation testing, CI/PR integration (`reflecta ci`), and `reflecta.toml`
+> config have shipped — see the gates, "CI mode", and `reflecta.toml` sections
+> above.
 
 ---
 
