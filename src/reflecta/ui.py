@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Generator
 
 from rich.console import Console
+from rich.markup import escape
 from rich.rule import Rule
 
 
@@ -345,7 +346,7 @@ class ReflectaUI:
             f"{'s' if len(plan.test_files) != 1 else ''}"
         )
         self._c.print(Rule(style="dim"))
-        self._c.print(plan.pr_body)
+        self._c.print(escape(plan.pr_body))
         self._c.print()
 
     def print_ci_result(self, result) -> None:
