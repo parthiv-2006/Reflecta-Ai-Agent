@@ -167,6 +167,46 @@ When a reflecta token is configured it takes precedence over local provider keys
 
 Reflecta ships with a pre-built sample project at [`examples/sample_project/`](examples/sample_project/) so you can run it immediately.
 
+### Run on any repo (all features, in order)
+
+A complete walkthrough that exercises every feature. Run it from anywhere; point `--path` at the repo you want to improve (must be **your own** repo — the free Gemini tier may train on inputs).
+
+```bash
+# 1. Install Reflecta (its own venv; it runs the target repo under the TARGET's venv)
+pipx install reflecta            # or: pip install reflecta
+
+# 2. Two free keys — get them at aistudio.google.com and console.groq.com
+export GEMINI_API_KEY=...        # test generation
+export GROQ_API_KEY=...          # test repair
+#   (optional) export ANTHROPIC_API_KEY=...   # enables --escalate and Haiku overflow
+
+cd /path/to/your/repo            # a repo with a pytest suite
+
+# 3. PREVIEW — zero quota, no LLM: what would Reflecta attempt vs skip, and why?
+reflecta triage --path .
+
+# 4. RUN with every gate on — generate, run, repair, and keep only tests that
+#    raise coverage AND survive the mutation (honesty) gate.
+reflecta run --path . --mutation --target-coverage 85 -v
+
+#    → writes tests to tests/_reflecta/, prints a before→after summary,
+#      and saves reflecta-report.json. Re-read it any time:
+reflecta report --path . --last
+
+# 5. OPEN A PR with the accepted tests (needs GITHUB_TOKEN with pull-requests:write).
+#    Preview the exact PR first — no git, no network, no token needed:
+reflecta ci --path . --mutation --dry-run
+export GITHUB_TOKEN=...          # in GitHub Actions this is injected automatically
+reflecta ci --path . --mutation
+
+# 6. Undo: remove everything Reflecta generated (human tests are never touched)
+reflecta clean --path .
+```
+
+Prefer not to repeat flags? Drop a [`reflecta.toml`](examples/reflecta.toml) at the repo root (`[tool.reflecta]` with `mutation = true`, `target_coverage = 85`, …) and both `run` and `ci` pick them up — CLI flags still override. To run it on a schedule, copy [`examples/reflecta-ci.yml`](examples/reflecta-ci.yml) into `.github/workflows/`.
+
+> **No keys?** Every command above accepts a preview/offline path: `triage` and `run --dry-run` spend zero quota, and `ci --dry-run` shows the PR without a token. The bundled sample below also runs the full pipeline on a tiny fixture.
+
 ### Run against the sample project
 
 ```bash
