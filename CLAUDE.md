@@ -9,6 +9,7 @@ reflecta finds untested Python code, writes targeted pytest tests for it using f
 - Coverage (the machine signal this tool consumes): `coverage run -m pytest && coverage json -o coverage.json`
 - Lint/format: `ruff check . && ruff format .`
 - Run the tool: `python -m reflecta run --path <dir>`
+- CI mode (open a PR of accepted tests): `python -m reflecta ci --path <dir>` (`--dry-run` to preview)
 - Run a single test: `pytest tests/test_x.py::test_name -q`
 
 ## Stack
