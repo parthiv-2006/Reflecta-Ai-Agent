@@ -326,3 +326,36 @@ class ReflectaUI:
         )
         self._c.print(f"  [bold]Report[/]       [dim]{report_path}[/]")
         self._c.print()
+
+    # ── ci (PR) output ────────────────────────────────────────────────────────
+
+    def print_ci_dry_run(self, plan) -> None:
+        self._c.print()
+        self._c.print(Rule(style="dim"))
+        self._c.print(
+            "  [bold cyan]CI dry-run[/] [dim](nothing committed, pushed, or opened)[/]"
+        )
+        self._c.print(
+            f"  Branch  [bold]{plan.head_branch}[/]  [dim]→ base[/] {plan.base_branch}"
+        )
+        self._c.print(f"  Commit  [dim]{plan.commit_message}[/]")
+        self._c.print(f"  PR      [bold]{plan.pr_title}[/]")
+        self._c.print(
+            f"  Files   {len(plan.test_files)} generated test file"
+            f"{'s' if len(plan.test_files) != 1 else ''}"
+        )
+        self._c.print(Rule(style="dim"))
+        self._c.print(plan.pr_body)
+        self._c.print()
+
+    def print_ci_result(self, result) -> None:
+        self._c.print()
+        if result.status == "no_tests":
+            self._c.print("  [yellow]No tests were kept — no pull request opened.[/]")
+        elif result.status == "opened":
+            self._c.print(f"  [green]✓ Opened pull request[/]  [dim]{result.pr.url}[/]")
+        elif result.status == "updated":
+            self._c.print(
+                f"  [green]✓ Updated existing pull request[/]  [dim]{result.pr.url}[/]"
+            )
+        self._c.print()
