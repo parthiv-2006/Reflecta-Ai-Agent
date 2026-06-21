@@ -1,0 +1,15 @@
+
+Reflecta  auto-generate coverage-raising pytest tests
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Triage (no LLM calls — preview only)
+  Baseline 40.0%  ·  interpreter C:\Python313\python.exe
+  4 would be attempted  ·  4 testable  ·  0 risky  ·  0 blocked  ·  0 entrypoint(s)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Would attempt:
+    ✓ calc.py :: subtract  (1 lines)
+    ✓ calc.py :: divide  (3 lines)
+    ✓ pricing.py :: _load_table  (3 lines)
+    ✓ pricing.py :: quote  (13 lines)
+

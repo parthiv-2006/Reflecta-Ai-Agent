@@ -11,10 +11,24 @@
 
 ## Demo
 
-<!-- To record: python -m reflecta run --path examples/sample_project --max-iters 3 -v -->
-<!-- Convert to GIF with asciinema or terminalizer, then drop it here as docs/demo.gif -->
+Point Reflecta at the bundled `examples/sample_project` and watch it measure
+coverage gaps, generate targeted tests, run the cost-tiered repair chain, and —
+when the free models can't fix a test — **escalate to Claude Sonnet with real
+tool-use**, closing **40% → 100%** in one run.
 
-> Point Reflecta at `examples/sample_project` and watch it measure coverage gaps, generate targeted tests, repair failures, and close from **64% → 92.5%** in one run.
+![Reflecta running on the sample project — Gemini generates, Groq repairs, Claude escalation fixes the hard target, coverage climbs 40% to 100%](docs/demo.gif)
+
+The headline target is `pricing.py::quote`, whose correct totals live in a
+sibling `rate_table.json`. Generation and the Groq repair loop never see that
+file, so they can't fix the test — only the Claude escalation stage, which has a
+`read_file` tool, recovers it:
+
+![Static screenshot of the same run](docs/demo.png)
+
+<sub>Assets are generated from a **real** run, not mocked:
+`python scripts/capture_demo.py` records the transcript, then
+`python scripts/render_demo.py --run docs/_demo/run.txt --triage docs/_demo/triage.txt --out docs`
+renders `docs/demo.{gif,mp4,png}`. ([docs/demo.mp4](docs/demo.mp4))</sub>
 
 ---
 
@@ -207,16 +221,23 @@ Prefer not to repeat flags? Drop a [`reflecta.toml`](examples/reflecta.toml) at 
 ### Run against the sample project
 
 ```bash
-python -m reflecta run --path examples/sample_project --max-iters 3
+python -m reflecta run --path examples/sample_project --escalate
 ```
 
-Expected output:
+`subtract`, `divide` and `_load_table` are one-shot Gemini keeps;
+`pricing.py::quote` fails its draft, survives neither Groq repair pass, and is
+recovered by the Claude escalation stage. Expected summary:
 ```
-Coverage: 64.0% → 92.5%  (+28.5 pp)
-Tests kept: 2 | discarded: 1 | repairs: 1
-Stop reason: exhausted
-Report written to examples/sample_project/reflecta-report.json
+Coverage     40.0% → 100.0%  +60.0 pp
+Tests        kept 4  ·  discarded 0  ·  repairs 2
+Escalations  attempted 1  ·  succeeded 1
+Stop reason  exhausted — all targets processed.
 ```
+
+Drop `--escalate` and the run still reaches 100% — `quote`'s passing sub-tests
+are salvaged instead. Escalation is what recovers the *whole* generated file
+when the free tiers can't, by reading the sibling `rate_table.json` the earlier
+stages never see.
 
 ### Run against your own project
 
@@ -259,6 +280,8 @@ python -m reflecta run --path /path/to/repo --dry-run
 ```
 
 You'll get a per-target breakdown: what would be attempted, what would be skipped, and why (`directly performs network I/O`, `module reads credentials at import`, etc.). A function that receives its client as a parameter (dependency injection) is classified as testable. Use `--attempt-risky` to force the risky tier.
+
+![reflecta triage on the sample project — a zero-LLM preview of the four testable targets](docs/triage.png)
 
 ### Running against repos with their own dependencies
 

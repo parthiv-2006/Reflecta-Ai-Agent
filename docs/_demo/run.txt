@@ -1,0 +1,43 @@
+
+Reflecta  auto-generate coverage-raising pytest tests
+────────────────────────────────────────────────────────────────────────────────
+  Baseline  40.0%  ·  6 files  ·  24 uncovered lines
+
+  Found 4 targets across 2 files
+  Testability  4 testable
+
+  Running  
+────────────────────────────────────────────────────────────────────────────────
+
+  [1/10]  pricing.py  ::  quote  (13 lines)
+        Generate                 ✓
+        Run                      ✗  failed
+        Repair 1/2  (8B)         ✗  still failing
+        Repair 2/2  (70B)        ✗  still failing
+        Escalating               Claude Sonnet (3 iters max)…
+        Escalation               ✓  Claude fixed it
+        Coverage                 40.0% → 95.2%  +55.2 pp  KEPT ✓
+
+  [2/10]  calc.py  ::  divide  (3 lines)
+        Generate                 ✓
+        Run                      ✓  passing
+        Coverage                 95.2% → 99.0%  +3.9 pp  KEPT ✓
+
+  [3/10]  pricing.py  ::  _load_table  (3 lines)
+        Generate                 ✓
+        Run                      ✓  passing
+        Coverage                 99.0% → 99.2%  +0.2 pp  KEPT ✓
+
+  [4/10]  calc.py  ::  subtract  (1 line)
+        Generate                 ✓
+        Run                      ✓  passing
+        Coverage                 99.2% → 100.0%  +0.8 pp  KEPT ✓
+
+────────────────────────────────────────────────────────────────────────────────
+  Coverage     40.0% → 100.0%  +60.0 pp
+  Tests        kept 4  ·  discarded 0  ·  repairs 2
+  Escalations  attempted 1  ·  succeeded 1
+  Stop reason  exhausted — all targets processed.
+  Report       C:\Users\Parthiv 
+Paul\Documents\Reflecta-Ai-Agent\examples\sample_project\reflecta-report.json
+
