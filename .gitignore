@@ -13,3 +13,5 @@ build/
 dist/
 # Editor/agent local state — never committed.
 .omc/
+# Repo-local temp dir for run_test_isolated (avoids Defender-locked %TEMP%).
+.tmp_reflecta/
